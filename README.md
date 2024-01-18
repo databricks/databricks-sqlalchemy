@@ -1,3 +1,3 @@
 # SQLAlchemy Dialect for Databricks
 
-TBD
+See PECO-1396 for more information about this repository.
