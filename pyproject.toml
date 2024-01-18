@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "databricks-sqlalchemy"
+version = "0.0.1b1"
+description = "SQLAlchemy dialect for Databricks"
+authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "databricks"}]
+
+[tool.poetry.dependencies]
+python = "^3.8.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
