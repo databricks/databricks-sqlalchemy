@@ -9,8 +9,19 @@ packages = [{include = "databricks"}]
 
 [tool.poetry.dependencies]
 python = "^3.8.0"
+sqlalchemy = "<=2.0.25"
+databricks-sql-connector = ">=3.0.2"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+log_cli = "true"
+log_cli_level = "INFO"
+testpaths = ["tests/e2e/test_compliance"]
+
+# env_file = ["test.env"]
+markers = ["reviewed: x", "flaky: known flaky tests", "backend: something"]
