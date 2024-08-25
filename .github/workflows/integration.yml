@@ -1,0 +1,63 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CATALOG: peco
+      DATABRICKS_SCHEMA : main
+      DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+
+    steps:
+      # Checkout your own repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Checkout the other repository
+      - name: Checkout Dependency Repository
+        uses: actions/checkout@v3
+        with:
+          repository: 'jprakash-db/databricks-sql-python'
+          path: 'databricks_sql_connector_core'
+          ref : 'jprakash-db/PECO-1803'
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # Install Poetry
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip3 install poetry
+
+      # Build the .whl file in the dependency repository
+      - name: Build Dependency Package
+        run: |
+          poetry build -C databricks_sql_connector_core
+
+      # Install the .whl file using pip
+      - name: Install Dependency Package
+        run: |
+          pip3 install databricks_sql_connector_core/dist/*.whl
+
+      # Install the requirements of your repository
+      - name: Install Dependencies
+        run: |
+          poetry install
+
+      # Run pytest to execute tests in your repository
+      - name: Run Tests
+        run: |
+          python -m pytest src/databricks_sqlalchemy --dburi \
+          "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
+
