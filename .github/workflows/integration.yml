@@ -1,6 +1,9 @@
 name: Integration
 
 on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    branches: [ main, PECO-1803 ]
   workflow_dispatch:
 
 jobs:
@@ -24,9 +27,9 @@ jobs:
       - name: Checkout Dependency Repository
         uses: actions/checkout@v3
         with:
-          repository: 'jprakash-db/databricks-sql-python'
-          path: 'databricks_sql_connector_core'
-          ref : 'jprakash-db/PECO-1803'
+          repository: jprakash-db/databricks-sql-python
+          path: databricks_sql_connector_core
+          ref : jprakash-db/PECO-1803
 
       # Set up Python
       - name: Set up Python
@@ -58,6 +61,5 @@ jobs:
       # Run pytest to execute tests in your repository
       - name: Run Tests
         run: |
-          python -m pytest src/databricks_sqlalchemy --dburi \
-          "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
+          python -m pytest src/databricks_sqlalchemy --dburi "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
 
