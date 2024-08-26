@@ -9,14 +9,14 @@ on:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-
+    environment: azure-prod
     env:
-      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
-      DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       DATABRICKS_CATALOG: ${{ secrets.DATABRICKS_CATALOG }}
       DATABRICKS_SCHEMA : ${{ secrets.DATABRICKS_SCHEMA }}
-      DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+      DATABRICKS_USER: ${{ secrets.DATABRICKS_USER }}
 
     steps:
       # Checkout your own repository
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: jprakash-db/databricks-sql-python
-          path: databricks_sql_connector_core
+          path: databricks_sql_python
           ref : jprakash-db/PECO-1803
 
       # Set up Python
@@ -37,29 +37,58 @@ jobs:
         with:
           python-version: '3.9'
 
+#      #----------------------------------------------
+#      #  -----  install & configure poetry  -----
+#      #----------------------------------------------
+#      - name: Install Poetry
+#        uses: snok/install-poetry@v1
+#        with:
+#          virtualenvs-create: true
+#          virtualenvs-in-project: true
+#          installer-parallel: true
+
       # Install Poetry
       - name: Install Poetry
         run: |
           python -m pip install --upgrade pip
           pip3 install poetry
-
-      # Build the .whl file in the dependency repository
-      - name: Build Dependency Package
-        run: |
-          poetry build -C databricks_sql_connector_core
-
-      # Install the .whl file using pip
-      - name: Install Dependency Package
-        run: |
-          pip3 install databricks_sql_connector_core/dist/*.whl
+          python3 -m venv venv
+          ls databricks_sql_python/databricks_sql_connector_core
 
       # Install the requirements of your repository
       - name: Install Dependencies
         run: |
-          poetry install
+          source venv/bin/activate
+          poetry build 
+          pip3 install dist/*.whl
+
+      # Build the .whl file in the dependency repository
+      - name: Build Dependency Package
+        run: |
+          source venv/bin/activate
+          pip3 install databricks_sql_python/databricks_sql_connector_core/dist/*.whl
+
+#      # Install the .whl file using pip
+#      - name: Install Dependency Package
+#        run: |
+#          pip3 install databricks_sql_python/databricks_sql_connector_core/dist/*.whl
 
       # Run pytest to execute tests in your repository
       - name: Run Tests
         run: |
-          python -m pytest src/databricks_sqlalchemy --dburi "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
+          source venv/bin/activate
+          pip3 list
+          pip3 install pytest
+
+      - name : Main Tests
+        run: |
+          source venv/bin/activate
+          pytest src/databricks_sqlalchemy/test_local
+#          cd src/databricks_sqlalchemy
+#          python -m pytest test_local --dburi "databricks://token:dfafadfvscsd@e2-dogfood.staging.cloud.databricks.com?http_path=/sql/1.0/warehouses/dd43ee29fedd958d&catalog=peco&schema=default"
+#          DBURI="databricks://token:${DATABRICKS_TOKEN}@${DATABRICKS_SERVER_HOSTNAME}?http_path=${DATABRICKS_HTTP_PATH}&catalog=${DATABRICKS_CATALOG}&schema=${DATABRICKS_SCHEMA}"
+#          python -m pytest test_local --dburi "$DBURI"
+#          poetry run python -m pytest test_local --dburi "databricks://token:${DATABRICKS_TOKEN}@${DATABRICKS_SERVER_HOSTNAME}?http_path=${DATABRICKS_HTTP_PATH}&catalog=${DATABRICKS_CATALOG}&schema=${DATABRICKS_SCHEMA}"
+
+#          python -m pytest src/databricks_sqlalchemy/test_local --dburi "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
 

@@ -6,9 +6,8 @@ import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.ext.compiler import compiles
 
-# from databricks.sql.utils import ParamEscaper
-import databricks.sql
-from databricks.sql.utils import ParamEscaper
+from databricks_sql_connector_core.sql.utils import ParamEscaper
+
 
 
 def process_literal_param_hack(value: Any):
@@ -112,7 +111,7 @@ class TIMESTAMP_NTZ(sqlalchemy.types.TypeDecorator):
 
     Our dialect maps sqlalchemy.types.DateTime() to this type, which means that all DateTime()
     objects are stored without tzinfo. To read and write timezone-aware datetimes use
-    databricks.sql.TIMESTAMP instead.
+    databricks_sql_connector_core.sql.TIMESTAMP instead.
 
     https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-ntz-type.html
     """
