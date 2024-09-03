@@ -37,16 +37,6 @@ jobs:
         with:
           python-version: '3.9'
 
-#      #----------------------------------------------
-#      #  -----  install & configure poetry  -----
-#      #----------------------------------------------
-#      - name: Install Poetry
-#        uses: snok/install-poetry@v1
-#        with:
-#          virtualenvs-create: true
-#          virtualenvs-in-project: true
-#          installer-parallel: true
-
       # Install Poetry
       - name: Install Poetry
         run: |
@@ -68,11 +58,6 @@ jobs:
           source venv/bin/activate
           pip3 install databricks_sql_python/databricks_sql_connector_core/dist/*.whl
 
-#      # Install the .whl file using pip
-#      - name: Install Dependency Package
-#        run: |
-#          pip3 install databricks_sql_python/databricks_sql_connector_core/dist/*.whl
-
       # Run pytest to execute tests in your repository
       - name: Run Tests
         run: |
@@ -84,11 +69,3 @@ jobs:
         run: |
           source venv/bin/activate
           pytest src/databricks_sqlalchemy/test_local
-#          cd src/databricks_sqlalchemy
-#          python -m pytest test_local --dburi "databricks://token:dfafadfvscsd@e2-dogfood.staging.cloud.databricks.com?http_path=/sql/1.0/warehouses/dd43ee29fedd958d&catalog=peco&schema=default"
-#          DBURI="databricks://token:${DATABRICKS_TOKEN}@${DATABRICKS_SERVER_HOSTNAME}?http_path=${DATABRICKS_HTTP_PATH}&catalog=${DATABRICKS_CATALOG}&schema=${DATABRICKS_SCHEMA}"
-#          python -m pytest test_local --dburi "$DBURI"
-#          poetry run python -m pytest test_local --dburi "databricks://token:${DATABRICKS_TOKEN}@${DATABRICKS_SERVER_HOSTNAME}?http_path=${DATABRICKS_HTTP_PATH}&catalog=${DATABRICKS_CATALOG}&schema=${DATABRICKS_SCHEMA}"
-
-#          python -m pytest src/databricks_sqlalchemy/test_local --dburi "databricks://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME?http_path=$DATABRICKS_HTTP_PATH&catalog=$DATABRICKS_CATALOG&schema=$DATABRICKS_SCHEMA"
-
