@@ -23,7 +23,7 @@ We maintain `_extra.py` with test cases that depend on SQLAlchemy's reusable dia
 
 ```
 poetry shell
-cd src/databricks/sqlalchemy/test
+cd src/databricks_sqlalchemy/test
 python -m pytest test_suite.py --dburi \
   "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema"
 ```
