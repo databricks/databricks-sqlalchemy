@@ -9,7 +9,7 @@ class TestLibraryDependencySuite:
     def test_sql_core(self):
         with pytest.raises(DatabricksImportError, match="databricks_sql_connector_core module is not available"):
             try:
-                import databricks_sql_connector_core
+                import databricks
             except ImportError:
                 raise DatabricksImportError("databricks_sql_connector_core module is not available")
 

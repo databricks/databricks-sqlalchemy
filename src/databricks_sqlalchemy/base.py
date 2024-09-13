@@ -2,7 +2,7 @@ from typing import Any, List, Optional, Dict, Union
 
 import databricks_sqlalchemy._ddl as dialect_ddl_impl
 import databricks_sqlalchemy._types as dialect_type_impl
-from databricks_sql_connector_core import sql
+from databricks import sql
 from databricks_sqlalchemy._parse import (
     _describe_table_extended_result_to_dict_list,
     _match_table_not_found_string,
