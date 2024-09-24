@@ -11,13 +11,13 @@ A SQLAlchemy 1.4 compatible dialect was first released in connector [version 2.4
 To install the dialect and its dependencies:
 
 ```shell
-pip install databricks-sql-connector[databricks_sqlalchemy]
+pip install databricks_sqlalchemy
 ```
 
 If you also plan to use `alembic` you can alternatively run:
 
 ```shell
-pip install databricks-sql-connector[alembic]
+pip install alembic
 ```
 
 ## Connection String
