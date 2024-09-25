@@ -9,7 +9,6 @@ from sqlalchemy.ext.compiler import compiles
 from databricks.sql.utils import ParamEscaper
 
 
-
 def process_literal_param_hack(value: Any):
     """This method is supposed to accept a Python type and return a string representation of that type.
     But due to some weirdness in the way SQLAlchemy's literal rendering works, we have to return
