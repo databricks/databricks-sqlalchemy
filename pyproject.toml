@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sqlalchemy"
-version = "1.0.0"
+version = "1.0.1"
 description = "Databricks SQLAlchemy plugin for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -10,8 +10,8 @@ include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.8.0"
-databricks_sql_connector_core = { version = ">=1.0.0"}
-sqlalchemy = { version = ">=2.0.21" }
+databricks_sql_connector_core = { version = ">=4.0.0"}
+sqlalchemy = { version = "^1.3.24" }
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -33,11 +33,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
-#
-[tool.pytest.ini_options]
-markers = {"reviewed" = "Test case has been reviewed by Databricks"}
-minversion = "6.0"
-log_cli = "false"
-log_cli_level = "INFO"
-testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
-env_files = ["test.env"]
+
