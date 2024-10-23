@@ -76,49 +76,6 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
 1. Clone this respository
 2. Run `poetry install`
 
-### Run tests
-
-We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run python -m pytest`, all other arguments are passed directly to `pytest`.
-
-#### Unit tests
-
-Unit tests do not require a Databricks account.
-
-```bash
-poetry run python -m pytest src/databricks/sqlalchemy/test
-```
-#### Only a specific test file
-
-```bash
-poetry run python -m pytest src/databricks/sqlalchemy/test/test_suite.py
-```
-
-#### e2e Tests
-
-End-to-end tests require a Databricks account. Before you can run them, you must set connection details for a Databricks SQL endpoint in your environment:
-
-```bash
-export host=""
-export http_path=""
-export access_token=""
-export catalog=""
-export schema=""
-```
-
-Or you can write these into a file called `test.env` in the root of the repository:
-
-```
-host="****.cloud.databricks.com"
-http_path="/sql/1.0/warehouses/***"
-access_token="dapi***"
-staging_ingestion_user="***@example.com"
-```
-
-To see logging output from pytest while running tests, set `log_cli = "true"` under `tool.pytest.ini_options` in `pyproject.toml`. You can also set `log_cli_level` to any of the default Python log levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-
-#### SQLAlchemy dialect tests
-
-See README.tests.md for details.
 
 ### Code formatting
 
