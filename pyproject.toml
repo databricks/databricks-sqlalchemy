@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sqlalchemy"
-version = "1.0.1"
+version = "1.0.2"
 description = "Databricks SQLAlchemy plugin for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -10,7 +10,6 @@ include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.8.0"
-databricks_sql_connector_core = { version = ">=4.0.0"}
 sqlalchemy = { version = "^1.3.24" }
 
 [tool.poetry.dev-dependencies]
