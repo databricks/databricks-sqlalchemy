@@ -1,9 +1,6 @@
 ## Databricks dialect for SQLALchemy 2.0
 
-The Databricks dialect for SQLAlchemy serves as bridge between [SQLAlchemy](https://www.sqlalchemy.org/) and the Databricks SQL Python driver. A working example demonstrating usage can be found in `examples/sqlalchemy.py`.
-
-## Usage with SQLAlchemy <= 2.0
-A SQLAlchemy 1.4 compatible dialect was first released in connector [version 2.4](https://github.com/databricks/databricks-sql-python/releases/tag/v2.4.0). Support for SQLAlchemy 1.4 was dropped from the dialect as part of `databricks-sql-connector==3.0.0`. To continue using the dialect with SQLAlchemy 1.x, you can use `databricks-sql-connector^2.4.0`.
+The Databricks dialect for SQLAlchemy serves as bridge between [SQLAlchemy](https://www.sqlalchemy.org/) and the Databricks SQL Python driver. A working example demonstrating usage can be found in `sqlalchemy_example.py`.
 
 
 ## Installation
