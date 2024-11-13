@@ -1,5 +1,6 @@
 # Release History
 
-# 2.0.0 ( 2021-10-23 )
+# 2.0.2 
 
-- databricks-sqlalchemy plugin for databricks-sql-python built on sqlalchemy v2 and has all the features of sqlalchemy compatible with the connector till databricks-sql-python v3.3.0
+- All the SQLAlchemy features from `databricks-sql-connector>=4.0.0` have been moved to this `databricks-sqlalchemy` library
+- Support for SQLAlchemy v2 dialect is provided 
