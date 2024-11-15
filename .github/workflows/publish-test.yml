@@ -53,6 +53,8 @@ jobs:
             #----------------------------------------------
             - name: Update pyproject.toml
               run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
+            - name: Check token
+              run: echo ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
 
             - name: Configure Test PyPI repository
               run: |
