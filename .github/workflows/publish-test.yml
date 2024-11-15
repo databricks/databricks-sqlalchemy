@@ -54,15 +54,21 @@ jobs:
             - name: Update pyproject.toml
               run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
 
-            - name: Building the package
-              run: poetry build
-
-            - name: Publish to Test PyPI
+            - name: Publish to Test PyPI using Poetry
               env:
-                  TEST_PYPI_TOKEN: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
+                POETRY_PYPI_TOKEN_TEST_PYPI: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}  # Poetry will use this token
               run: |
-                  pip install twine
-                  twine upload --repository-url https://test.pypi.org/legacy/ dist/* -u __token__ -p $TEST_PYPI_TOKEN
+                    poetry config pypi-token.test-pypi $POETRY_PYPI_TOKEN_TEST_PYPI
+                    poetry publish --repository test-pypi --build
+#            - name: Building the package
+#              run: poetry build
+#
+#            - name: Publish to Test PyPI
+#              env:
+#                  TEST_PYPI_TOKEN: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
+#              run: |
+#                  pip install twine
+#                  twine upload --repository-url https://test.pypi.org/legacy/ dist/* -u __token__ -p $TEST_PYPI_TOKEN
 #            #----------------------------------------------
 #            # Attempt push to test-pypi
 #            #----------------------------------------------
