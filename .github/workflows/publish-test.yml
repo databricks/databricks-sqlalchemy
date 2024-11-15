@@ -62,6 +62,7 @@ jobs:
               env:
                     POETRY_PYPI_TOKEN_TEST_PYPI: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
               run: |
+                    echo $POETRY_PYPI_TOKEN_TEST_PYPI
                     poetry publish --repository test-pypi --build
 #            - name: Building the package
 #              run: poetry build
