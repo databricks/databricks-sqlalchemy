@@ -113,7 +113,3 @@ else:
 assert len(output) == 2
 
 base.metadata.drop_all()
-
-
-
-print("THIS is Added for no readon")
