@@ -54,11 +54,15 @@ jobs:
             - name: Update pyproject.toml
               run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
 
+            - name: Configure Test PyPI repository
+              run: |
+                  poetry config repositories.test-pypi https://test.pypi.org/legacy/
+
             - name: Publish to Test PyPI using Poetry
               env:
-                   POETRY_PYPI_TOKEN_TEST_PYPI: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
+                    POETRY_PYPI_TOKEN_TEST_PYPI: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
               run: |
-                   poetry publish --repository test-pypi --build
+                    poetry publish --repository test-pypi --build
 #            - name: Building the package
 #              run: poetry build
 #
