@@ -61,11 +61,8 @@ jobs:
                   poetry config repositories.test-pypi https://test.pypi.org/legacy/
 
             - name: Publish to Test PyPI using Poetry
-              env:
-                    POETRY_PYPI_TOKEN_TEST_PYPI: ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
-              run: |
-                    echo $POETRY_PYPI_TOKEN_TEST_PYPI
-                    poetry publish --repository test-pypi --build
+              run:
+                  poetry publish --repository test-pypi --build --username __token__ --password ${{ secrets.SQLALCHEMY_TEST_PYPI_TOKEN }}
 #            - name: Building the package
 #              run: poetry build
 #
