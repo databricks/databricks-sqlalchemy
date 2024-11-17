@@ -44,4 +44,4 @@ testpaths = ["tests", "tests/test_local"]
 env_files = ["test.env"]
 
 [mypy]
-ignore_missing_imports = "True"
+ignore_missing_imports = true
