@@ -43,5 +43,5 @@ log_cli_level = "INFO"
 testpaths = ["tests", "tests/test_local"]
 env_files = ["test.env"]
 
-[mypy]
+[tool.mypy]
 ignore_missing_imports = true
