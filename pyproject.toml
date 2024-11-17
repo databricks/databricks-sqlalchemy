@@ -40,5 +40,8 @@ markers = {"reviewed" = "Test case has been reviewed by Databricks"}
 minversion = "6.0"
 log_cli = "false"
 log_cli_level = "INFO"
-testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
+testpaths = ["tests", "tests/test_local"]
 env_files = ["test.env"]
+
+[mypy]
+ignore_missing_imports = "True"
