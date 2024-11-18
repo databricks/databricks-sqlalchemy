@@ -35,3 +35,5 @@ build-backend = "poetry.core.masonry.api"
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
 
+[tool.mypy]
+ignore_missing_imports = true
