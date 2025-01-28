@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sqlalchemy"
-version = "1.0.4"
+version = "1.0.5"
 description = "Databricks SQLAlchemy plugin for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
