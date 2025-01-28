@@ -1,6 +1,6 @@
 # Release History
 
-# 1.0.4
+# 1.0.5 (2025-01-27)
 
 - All the SQLAlchemy features from `databricks-sql-connector>=4.0.0` have been moved to this `databricks-sqlalchemy` library
 - Support for SQLAlchemy v1 dialect is provided 
