@@ -309,7 +309,7 @@ GET_COLUMNS_TYPE_MAP = {
     "int": sqlalchemy.types.Integer,
     "bigint": sqlalchemy.types.BigInteger,
     "float": sqlalchemy.types.Float,
-    "double": sqlalchemy.types.Float,
+    "double": sqlalchemy.types.Double,
     "string": sqlalchemy.types.String,
     "varchar": sqlalchemy.types.String,
     "char": sqlalchemy.types.String,
