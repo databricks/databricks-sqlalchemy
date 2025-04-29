@@ -1,5 +1,9 @@
 # Release History
 
+# 2.0.6 (2025-04-29)
+
+- Relaxed pin for `pyarrow` (databricks/databricks-sqlalchemy#20 by @dhirschfeld)
+
 # 2.0.5 (2025-02-22)
 
 - Added support for double column types (databricks/databricks-sqlalchemy#19 by @up-stevesloan)
