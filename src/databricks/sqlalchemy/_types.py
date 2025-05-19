@@ -5,6 +5,7 @@ from typing import Any, Union, Optional
 import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.types import TypeDecorator, UserDefinedType
 
 from databricks.sql.utils import ParamEscaper
 
@@ -321,3 +322,77 @@ class TINYINT(sqlalchemy.types.TypeDecorator):
 @compiles(TINYINT, "databricks")
 def compile_tinyint(type_, compiler, **kw):
     return "TINYINT"
+
+
+class DatabricksArray(UserDefinedType):
+    """
+    A custom array type that can wrap any other SQLAlchemy type.
+
+    Examples:
+        DatabricksArray(String)         -> ARRAY<STRING>
+        DatabricksArray(Integer)        -> ARRAY<INT>
+        DatabricksArray(CustomType)     -> ARRAY<CUSTOM_TYPE>
+    """
+
+    def __init__(self, item_type):
+        self.item_type = item_type() if isinstance(item_type, type) else item_type
+
+    def get_col_spec(self, **kw):
+        if isinstance(self.item_type, UserDefinedType):
+            # If it's a UserDefinedType, call its get_col_spec directly
+            inner_type = self.item_type.get_col_spec(**kw)
+        elif isinstance(self.item_type, TypeDecorator):
+            # If it's a TypeDecorator, we need to get its dialect implementation
+            dialect = kw.get("type_expression", None)
+            if dialect:
+                dialect = dialect.dialect
+                impl = self.item_type.load_dialect_impl(dialect)
+                # Compile the implementation type
+                inner_type = impl.compile(dialect=dialect)
+            else:
+                # Fallback if no dialect available
+                inner_type = self.item_type.impl.__class__.__name__.upper()
+        else:
+            # For basic SQLAlchemy types, use class name
+            inner_type = self.item_type.__class__.__name__.upper()
+
+        return f"ARRAY<{inner_type}>"
+
+
+class DatabricksMap(UserDefinedType):
+    """
+    A custom map type that can wrap any other SQLAlchemy types for both key and value.
+
+    Examples:
+        DatabricksMap(String, String)         -> MAP<STRING,STRING>
+        DatabricksMap(Integer, String)        -> MAP<INT,STRING>
+        DatabricksMap(String, DatabricksArray(Integer)) -> MAP<STRING,ARRAY<INT>>
+    """
+
+    def __init__(self, key_type, value_type):
+        self.key_type = key_type() if isinstance(key_type, type) else key_type
+        self.value_type = value_type() if isinstance(value_type, type) else value_type
+
+    def get_col_spec(self, **kw):
+        def process_type(type_obj):
+            if isinstance(type_obj, UserDefinedType):
+                # If it's a UserDefinedType, call its get_col_spec directly
+                return type_obj.get_col_spec(**kw)
+            elif isinstance(type_obj, TypeDecorator):
+                # If it's a TypeDecorator, we need to get its dialect implementation
+                dialect = kw.get("type_expression", None)
+                if dialect:
+                    dialect = dialect.dialect
+                    impl = type_obj.load_dialect_impl(dialect)
+                    # Compile the implementation type
+                    return impl.compile(dialect=dialect)
+                else:
+                    # Fallback if no dialect available
+                    return type_obj.impl.__class__.__name__.upper()
+            else:
+                # For basic SQLAlchemy types, use class name
+                return type_obj.__class__.__name__.upper()
+
+        key_type = process_type(self.key_type)
+        value_type = process_type(self.value_type)
+        return f"MAP<{key_type},{value_type}>"
