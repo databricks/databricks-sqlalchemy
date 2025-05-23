@@ -12,7 +12,6 @@ from databricks.sqlalchemy._parse import (
 from sqlalchemy import (
     BigInteger,
     Boolean,
-    Column,
     Date,
     DateTime,
     Integer,
@@ -195,6 +194,7 @@ def get_databricks_non_compound_types():
         TINYINT,
         TIMESTAMP,
         TIMESTAMP_NTZ,
+        BigInteger
     ]
 
 
