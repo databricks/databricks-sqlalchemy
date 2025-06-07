@@ -27,6 +27,11 @@ def process_literal_param_hack(value: Any):
     return value
 
 
+def identity_processor(value):
+    """This method returns the value itself, when no other processor is provided"""
+    return value
+
+
 @compiles(sqlalchemy.types.Enum, "databricks")
 @compiles(sqlalchemy.types.String, "databricks")
 @compiles(sqlalchemy.types.Text, "databricks")
@@ -337,6 +342,16 @@ class DatabricksArray(UserDefinedType):
     def __init__(self, item_type):
         self.item_type = item_type() if isinstance(item_type, type) else item_type
 
+    def bind_processor(self, dialect):
+        item_processor = self.item_type.bind_processor(dialect)
+        if item_processor is None:
+            item_processor = identity_processor
+
+        def process(value):
+            return [item_processor(val) for val in value]
+
+        return process
+
 
 @compiles(DatabricksArray, "databricks")
 def compile_databricks_array(type_, compiler, **kw):
@@ -358,6 +373,23 @@ class DatabricksMap(UserDefinedType):
     def __init__(self, key_type, value_type):
         self.key_type = key_type() if isinstance(key_type, type) else key_type
         self.value_type = value_type() if isinstance(value_type, type) else value_type
+
+    def bind_processor(self, dialect):
+        key_processor = self.key_type.bind_processor(dialect)
+        value_processor = self.value_type.bind_processor(dialect)
+
+        if key_processor is None:
+            key_processor = identity_processor
+        if value_processor is None:
+            value_processor = identity_processor
+
+        def process(value):
+            return {
+                key_processor(key): value_processor(value)
+                for key, value in value.items()
+            }
+
+        return process
 
 
 @compiles(DatabricksMap, "databricks")

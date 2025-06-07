@@ -194,7 +194,7 @@ def get_databricks_non_compound_types():
         TINYINT,
         TIMESTAMP,
         TIMESTAMP_NTZ,
-        BigInteger
+        BigInteger,
     ]
 
 
