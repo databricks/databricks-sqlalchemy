@@ -63,9 +63,6 @@ class TestComplexTypes(TestSetup):
         actual_parsed = self._parse_to_common_type(actual)
         expected_parsed = self._parse_to_common_type(expected)
 
-        print("LINE 66")
-        print(actual_parsed, expected_parsed)
-        print(type(actual_parsed), type(expected_parsed))
         # Check if types are the same
         if type(actual_parsed) != type(expected_parsed):
             return False
