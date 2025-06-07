@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import Column, MetaData, String, Table, create_engine
+from sqlalchemy import Column, MetaData, String, Table, Numeric, Integer, create_engine
 from sqlalchemy.schema import (
     CreateTable,
     DropColumnComment,
@@ -7,6 +7,7 @@ from sqlalchemy.schema import (
     SetColumnComment,
     SetTableComment,
 )
+from databricks.sqlalchemy import DatabricksArray, DatabricksMap
 
 
 class DDLTestBase:
@@ -94,3 +95,20 @@ class TestTableCommentDDL(DDLTestBase):
         stmt = DropTableComment(table_with_comment)
         output = self.compile(stmt)
         assert output == "COMMENT ON TABLE martin IS NULL"
+
+
+class TestTableComplexTypeDDL(DDLTestBase):
+    @pytest.fixture(scope="class")
+    def metadata(self) -> MetaData:
+        metadata = MetaData()
+        col1 = Column("array_array_string", DatabricksArray(DatabricksArray(String)))
+        col2 = Column("map_string_string", DatabricksMap(String, String))
+        table = Table("complex_type", metadata, col1, col2)
+        return metadata
+
+    def test_create_table_with_complex_type(self, metadata):
+        stmt = CreateTable(metadata.tables["complex_type"])
+        output = self.compile(stmt)
+
+        assert "array_array_string ARRAY<ARRAY<STRING>>" in output
+        assert "map_string_string MAP<STRING,STRING>" in output
