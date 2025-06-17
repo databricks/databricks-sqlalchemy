@@ -183,62 +183,72 @@ def test_get_comment_from_dte_output():
 
 def get_databricks_non_compound_types():
     return [
-        Integer,
-        String,
-        Boolean,
-        Date,
-        DateTime,
-        Time,
-        Uuid,
-        Numeric,
-        TINYINT,
-        TIMESTAMP,
-        TIMESTAMP_NTZ,
-        BigInteger,
+        Integer(),
+        String(),
+        Boolean(),
+        Date(),
+        DateTime(),
+        Time(),
+        Uuid(),
+        Numeric(),
+        TINYINT(),
+        TIMESTAMP(),
+        TIMESTAMP_NTZ(),
+        BigInteger(),
     ]
+
+
+def get_databricks_compound_types():
+    return [DatabricksArray(String), DatabricksMap(String, String)]
 
 
 @pytest.mark.parametrize("internal_type", get_databricks_non_compound_types())
 def test_array_parsing(internal_type):
-    array_type = DatabricksArray(internal_type())
+    array_type = DatabricksArray(internal_type)
 
     actual_parsed = array_type.compile(dialect=dialect)
-    expected_parsed = "ARRAY<{}>".format(internal_type().compile(dialect=dialect))
+    expected_parsed = "ARRAY<{}>".format(internal_type.compile(dialect=dialect))
     assert actual_parsed == expected_parsed
 
 
 @pytest.mark.parametrize("internal_type_1", get_databricks_non_compound_types())
 @pytest.mark.parametrize("internal_type_2", get_databricks_non_compound_types())
 def test_map_parsing(internal_type_1, internal_type_2):
-    map_type = DatabricksMap(internal_type_1(), internal_type_2())
+    map_type = DatabricksMap(internal_type_1, internal_type_2)
 
     actual_parsed = map_type.compile(dialect=dialect)
     expected_parsed = "MAP<{},{}>".format(
-        internal_type_1().compile(dialect=dialect),
-        internal_type_2().compile(dialect=dialect),
+        internal_type_1.compile(dialect=dialect),
+        internal_type_2.compile(dialect=dialect),
     )
     assert actual_parsed == expected_parsed
 
 
-@pytest.mark.parametrize("internal_type", get_databricks_non_compound_types())
+@pytest.mark.parametrize(
+    "internal_type",
+    get_databricks_non_compound_types() + get_databricks_compound_types(),
+)
 def test_multilevel_array_type_parsing(internal_type):
-    array_type = DatabricksArray(DatabricksArray(DatabricksArray(internal_type())))
+    array_type = DatabricksArray(DatabricksArray(DatabricksArray(internal_type)))
 
     actual_parsed = array_type.compile(dialect=dialect)
     expected_parsed = "ARRAY<ARRAY<ARRAY<{}>>>".format(
-        internal_type().compile(dialect=dialect)
+        internal_type.compile(dialect=dialect)
     )
     assert actual_parsed == expected_parsed
 
 
-@pytest.mark.parametrize("internal_type", get_databricks_non_compound_types())
+@pytest.mark.parametrize(
+    "internal_type",
+    get_databricks_non_compound_types() + get_databricks_compound_types(),
+)
 def test_multilevel_map_type_parsing(internal_type):
     map_type = DatabricksMap(
-        String, DatabricksMap(String, DatabricksMap(String, internal_type()))
+        String, DatabricksMap(String, DatabricksMap(String, internal_type))
     )
 
     actual_parsed = map_type.compile(dialect=dialect)
     expected_parsed = "MAP<STRING,MAP<STRING,MAP<STRING,{}>>>".format(
-        internal_type().compile(dialect=dialect)
+        internal_type.compile(dialect=dialect)
     )
     assert actual_parsed == expected_parsed
