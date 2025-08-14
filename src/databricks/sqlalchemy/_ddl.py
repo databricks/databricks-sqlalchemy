@@ -1,6 +1,7 @@
-import re
-from sqlalchemy.sql import compiler, sqltypes
 import logging
+import re
+
+from sqlalchemy.sql import compiler, sqltypes
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,15 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         See comments in test_suite.py. We may implement implicit IDENTITY using this
         feature in the future, similar to the Microsoft SQL Server dialect.
         """
-        if column is column.table._autoincrement_column or column.autoincrement is True:
+        is_autoincrement = bool(column.autoincrement)
+        if (
+            column.table is not None  # column.table can be None
+            and not is_autoincrement
+        ):
+            if column is column.table._autoincrement_column:
+                is_autoincrement = True
+
+        if is_autoincrement:
             logger.warning(
                 "Databricks dialect ignores SQLAlchemy's autoincrement semantics. Use explicit Identity() instead."
             )
