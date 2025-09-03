@@ -7,7 +7,7 @@ from sqlalchemy.schema import (
     SetColumnComment,
     SetTableComment,
 )
-from databricks.sqlalchemy import DatabricksArray, DatabricksMap
+from databricks.sqlalchemy import DatabricksArray, DatabricksMap, DatabricksVariant
 
 
 class DDLTestBase:
@@ -103,7 +103,8 @@ class TestTableComplexTypeDDL(DDLTestBase):
         metadata = MetaData()
         col1 = Column("array_array_string", DatabricksArray(DatabricksArray(String)))
         col2 = Column("map_string_string", DatabricksMap(String, String))
-        table = Table("complex_type", metadata, col1, col2)
+        col3 = Column("variant_col", DatabricksVariant())
+        table = Table("complex_type", metadata, col1, col2, col3)
         return metadata
 
     def test_create_table_with_complex_type(self, metadata):
@@ -112,3 +113,4 @@ class TestTableComplexTypeDDL(DDLTestBase):
 
         assert "array_array_string ARRAY<ARRAY<STRING>>" in output
         assert "map_string_string MAP<STRING,STRING>" in output
+        assert "variant_col VARIANT" in output

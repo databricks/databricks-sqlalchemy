@@ -4,7 +4,7 @@ import pytest
 import sqlalchemy
 
 from databricks.sqlalchemy.base import DatabricksDialect
-from databricks.sqlalchemy._types import TINYINT, TIMESTAMP, TIMESTAMP_NTZ
+from databricks.sqlalchemy._types import TINYINT, TIMESTAMP, TIMESTAMP_NTZ, DatabricksVariant
 
 
 class DatabricksDataType(enum.Enum):
@@ -28,6 +28,7 @@ class DatabricksDataType(enum.Enum):
     ARRAY = enum.auto()
     MAP = enum.auto()
     STRUCT = enum.auto()
+    VARIANT = enum.auto()
 
 
 # Defines the way that SQLAlchemy CamelCase types are compiled into Databricks SQL types.
@@ -131,6 +132,7 @@ uppercase_type_map = {
     TINYINT: DatabricksDataType.TINYINT,
     TIMESTAMP: DatabricksDataType.TIMESTAMP,
     TIMESTAMP_NTZ: DatabricksDataType.TIMESTAMP_NTZ,
+    DatabricksVariant: DatabricksDataType.VARIANT,
 }
 
 
