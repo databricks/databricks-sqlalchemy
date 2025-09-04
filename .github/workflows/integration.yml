@@ -13,7 +13,8 @@ jobs:
             DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
             DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
             DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-            DATABRICKS_CATALOG: peco
+            DATABRICKS_CATALOG: ${{ secrets.SQLALCHEMY_CATALOG }}
+            DATABRICKS_SCHEMA: ${{ secrets.SQLALCHEMY_SCHEMA }}
             DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
         steps:
             #----------------------------------------------
