@@ -20,7 +20,6 @@ import numpy as np
 import decimal
 import json
 
-
 class TestComplexTypes(TestSetup):
     def _parse_to_common_type(self, value):
         """
@@ -244,38 +243,28 @@ class TestComplexTypes(TestSetup):
         table, sample_data = self.sample_variant_table()
 
         with self.table_context(table) as engine:
-            # Pre-serialize variant data for SQLAlchemy
-            variant_data = sample_data.copy()
-            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
-                variant_data[key] = None if sample_data[key] is None else json.dumps(sample_data[key])
-            
-            sa_obj = table(**variant_data)
+
+            sa_obj = table(**sample_data)
             session = Session(engine)
             session.add(sa_obj)
             session.commit()
 
             stmt = select(table).where(table.int_col == 1)
-
             result = session.scalar(stmt)
-
             compare = {key: getattr(result, key) for key in sample_data.keys()}
             # Parse JSON values back to original format for comparison
             for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
                 if compare[key] is not None:
                     compare[key] = json.loads(compare[key])
+
             assert self._recursive_compare(compare, sample_data)
 
     def test_variant_table_creation_pandas(self):
         table, sample_data = self.sample_variant_table()
 
         with self.table_context(table) as engine:
-            # Pre-serialize variant data for pandas
-            variant_data = sample_data.copy()
-            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
-                variant_data[key] = None if sample_data[key] is None else json.dumps(sample_data[key])
             
-            # Insert the data into the table
-            df = pd.DataFrame([variant_data])
+            df = pd.DataFrame([sample_data])
             dtype_mapping = {
                 "variant_simple_col": DatabricksVariant,
                 "variant_nested_col": DatabricksVariant,
@@ -284,7 +273,6 @@ class TestComplexTypes(TestSetup):
             }
             df.to_sql(table.__tablename__, engine, if_exists="append", index=False, dtype=dtype_mapping)
             
-            # Read the data from the table
             stmt = select(table)
             df_result = pd.read_sql(stmt, engine)
             result_dict = df_result.iloc[0].to_dict()

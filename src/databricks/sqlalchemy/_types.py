@@ -10,6 +10,7 @@ from sqlalchemy.types import TypeDecorator, UserDefinedType
 from databricks.sql.utils import ParamEscaper
 
 from sqlalchemy.sql import expression
+import json
 
 def process_literal_param_hack(value: Any):
     """This method is supposed to accept a Python type and return a string representation of that type.
@@ -420,7 +421,12 @@ class DatabricksVariant(UserDefinedType):
         """
 
         def process(value):
-            return value
+            if value is None:
+                return None
+            try:
+                return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Cannot serialize value {value} to JSON: {e}")
 
         return process
 
@@ -435,7 +441,10 @@ class DatabricksVariant(UserDefinedType):
         def process(value):
             if value is None:
                 return "NULL"
-            return self.pe.escape_string(value)
+            try:
+                return self.pe.escape_string(json.dumps(value, ensure_ascii=False, separators=(',', ':')))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Cannot serialize value {value} to JSON: {e}")
             
         return f"PARSE_JSON('{process}')"
 
