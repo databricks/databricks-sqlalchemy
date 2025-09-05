@@ -17,11 +17,12 @@ import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
+import json
 
 # By convention, backend-specific SQLA types are defined in uppercase
-# This dialect exposes Databricks SQL's TIMESTAMP and TINYINT types
+# This dialect exposes Databricks SQL's TIMESTAMP, TINYINT, and VARIANT types
 # as these are not covered by the generic, camelcase types shown below
-from databricks.sqlalchemy import TIMESTAMP, TINYINT
+from databricks.sqlalchemy import TIMESTAMP, TINYINT, DatabricksVariant
 
 # Beside the CamelCase types shown below, line comments reflect
 # the underlying Databricks SQL / Delta table type
@@ -82,6 +83,12 @@ class SampleObject(Base):
 	datetime_col_ntz = Column(DateTime)
 	time_col = Column(Time)
 	uuid_col = Column(Uuid)
+	variant_col = Column(DatabricksVariant)
+
+Base.metadata.drop_all(engine)
+
+# Output SQL is:
+# DROP TABLE pysql_sqlalchemy_example_table
 
 # This generates a CREATE TABLE statement against the catalog and schema
 # specified in the connection string
@@ -100,6 +107,7 @@ Base.metadata.create_all(engine)
 #         datetime_col_ntz TIMESTAMP_NTZ,
 #         time_col STRING,
 #         uuid_col STRING,
+#         variant_col VARIANT,
 #         PRIMARY KEY (bigint_col)
 # ) USING DELTA
 
@@ -120,6 +128,23 @@ sample_object = {
 	"datetime_col_ntz": datetime(1990, 12, 4, 6, 33, 41),
 	"time_col": time(23, 59, 59),
 	"uuid_col": UUID(int=255),
+	"variant_col": {
+		"name": "John Doe",
+		"age": 30,
+		"address": {
+			"street": "123 Main St",
+			"city": "San Francisco",
+			"state": "CA",
+			"zip": "94105"
+		},
+		"hobbies": ["reading", "hiking", "cooking"],
+		"is_active": True,
+		"metadata": {
+			"created_at": "2024-01-15T10:30:00Z",
+			"version": 1.2,
+			"tags": ["premium", "verified"]
+		}
+	},
 }
 sa_obj = SampleObject(**sample_object)
 
@@ -140,7 +165,8 @@ session.commit()
 #     datetime_col,
 #     datetime_col_ntz,
 #     time_col,
-#     uuid_col
+#     uuid_col,
+#     variant_col
 #   )
 # VALUES
 #   (
@@ -154,7 +180,8 @@ session.commit()
 #     :datetime_col,
 #     :datetime_col_ntz,
 #     :time_col,
-#     :uuid_col
+#     :uuid_col,
+#     PARSE_JSON(:variant_col)
 #   )
 
 # Here we build a SELECT query using ORM
@@ -165,6 +192,7 @@ result = session.scalar(stmt)
 
 # Finally, we read out the input data and compare it to the output
 compare = {key: getattr(result, key) for key in sample_object.keys()}
+compare['variant_col'] = json.loads(compare['variant_col'])
 assert compare == sample_object
 
 # Then we drop the demonstration table

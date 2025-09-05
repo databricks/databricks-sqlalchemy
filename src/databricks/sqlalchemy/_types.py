@@ -446,7 +446,7 @@ class DatabricksVariant(UserDefinedType):
             except (TypeError, ValueError) as e:
                 raise ValueError(f"Cannot serialize value {value} to JSON: {e}")
             
-        return f"PARSE_JSON('{process}')"
+        return process
 
 @compiles(DatabricksVariant, "databricks")
 def compile_variant(type_, compiler, **kw):

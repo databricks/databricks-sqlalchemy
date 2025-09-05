@@ -257,7 +257,7 @@ class TestComplexTypes(TestSetup):
                 if compare[key] is not None:
                     compare[key] = json.loads(compare[key])
 
-            assert self._recursive_compare(compare, sample_data)
+            assert compare == sample_data
 
     def test_variant_table_creation_pandas(self):
         table, sample_data = self.sample_variant_table()
@@ -280,4 +280,39 @@ class TestComplexTypes(TestSetup):
             for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
                 if result_dict[key] is not None:
                     result_dict[key] = json.loads(result_dict[key])
-            assert self._recursive_compare(result_dict, sample_data)
+
+            assert result_dict == sample_data
+
+    def test_variant_literal_processor(self):
+        table, sample_data = self.sample_variant_table()
+
+        with self.table_context(table) as engine:
+            stmt = table.__table__.insert().values(**sample_data)
+
+            try:
+                compiled = stmt.compile(
+                    dialect=engine.dialect,
+                    compile_kwargs={"literal_binds": True}
+                )
+                sql_str = str(compiled)
+
+                # Assert that JSON actually got inlined
+                assert '{"key":"value","number":42}' in sql_str
+            except NotImplementedError:
+                raise
+
+            with engine.begin() as conn:
+                conn.execute(stmt)
+
+            session = Session(engine)
+            stmt_select = select(table).where(table.int_col == sample_data["int_col"])
+            result = session.scalar(stmt_select)
+
+            compare = {key: getattr(result, key) for key in sample_data.keys()}
+
+            # Parse JSON values back to original Python objects
+            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
+                if compare[key] is not None:
+                    compare[key] = json.loads(compare[key])
+
+            assert compare == sample_data
