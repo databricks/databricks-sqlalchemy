@@ -12,6 +12,7 @@ from databricks.sql.utils import ParamEscaper
 from sqlalchemy.sql import expression
 import json
 
+
 def process_literal_param_hack(value: Any):
     """This method is supposed to accept a Python type and return a string representation of that type.
     But due to some weirdness in the way SQLAlchemy's literal rendering works, we have to return
@@ -400,31 +401,32 @@ def compile_databricks_map(type_, compiler, **kw):
     value_type = compiler.process(type_.value_type, **kw)
     return f"MAP<{key_type},{value_type}>"
 
+
 class DatabricksVariant(UserDefinedType):
     """
     A custom variant type for storing semi-structured data including STRUCT, ARRAY, MAP, and scalar types.
     Note: VARIANT MAP types can only have STRING keys.
-    
+
     Examples:
         DatabricksVariant()  -> VARIANT
-        
+
     Usage:
         Column('data', DatabricksVariant())
     """
+
     cache_ok = True
 
     def __init__(self):
         self.pe = ParamEscaper()
 
     def bind_processor(self, dialect):
-        """Process values before sending to database.
-        """
+        """Process values before sending to database."""
 
         def process(value):
             if value is None:
                 return None
             try:
-                return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+                return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
             except (TypeError, ValueError) as e:
                 raise ValueError(f"Cannot serialize value {value} to JSON: {e}")
 
@@ -435,18 +437,22 @@ class DatabricksVariant(UserDefinedType):
         return expression.func.PARSE_JSON(bindvalue)
 
     def literal_processor(self, dialect):
-        """Process literal values for SQL generation.      
+        """Process literal values for SQL generation.
         For VARIANT columns, use PARSE_JSON() to properly insert data.
         """
+
         def process(value):
             if value is None:
                 return "NULL"
             try:
-                return self.pe.escape_string(json.dumps(value, ensure_ascii=False, separators=(',', ':')))
+                return self.pe.escape_string(
+                    json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+                )
             except (TypeError, ValueError) as e:
                 raise ValueError(f"Cannot serialize value {value} to JSON: {e}")
-            
+
         return process
+
 
 @compiles(DatabricksVariant, "databricks")
 def compile_variant(type_, compiler, **kw):
