@@ -5,6 +5,14 @@ from databricks.sqlalchemy._types import (
     TIMESTAMP_NTZ,
     DatabricksArray,
     DatabricksMap,
+    DatabricksVariant,
 )
 
-__all__ = ["TINYINT", "TIMESTAMP", "TIMESTAMP_NTZ", "DatabricksArray", "DatabricksMap"]
+__all__ = [
+    "TINYINT",
+    "TIMESTAMP",
+    "TIMESTAMP_NTZ",
+    "DatabricksArray",
+    "DatabricksMap",
+    "DatabricksVariant",
+]

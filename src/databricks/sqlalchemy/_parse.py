@@ -318,6 +318,7 @@ GET_COLUMNS_TYPE_MAP = {
     "map": sqlalchemy.types.String,
     "struct": sqlalchemy.types.String,
     "uniontype": sqlalchemy.types.String,
+    "variant": type_overrides.DatabricksVariant,
     "decimal": sqlalchemy.types.Numeric,
     "timestamp": type_overrides.TIMESTAMP,
     "timestamp_ntz": type_overrides.TIMESTAMP_NTZ,
