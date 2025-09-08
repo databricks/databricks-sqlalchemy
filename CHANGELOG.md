@@ -1,9 +1,12 @@
 # Release History
 
+# 2.0.8 (2025-09-08)
+
+- Feature: Added support for variant datatype (databricks/databricks-sqlalchemy#42 by @msrathore-db)
+
 # 2.0.7 (2025-06-23)
 
 - Feature: Added support for complex data types such as DatabricksArray and DatabricksMap [Private Preview] (databricks/databricks-sqlalchemy#30 by @jprakash-db)
-
 
 # 2.0.6 (2025-04-29)
 
