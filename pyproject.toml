@@ -13,6 +13,7 @@ python = "^3.8.0"
 databricks_sql_connector = { version = ">=4.0.0"}
 pyarrow = { version = ">=14.0.1"}
 sqlalchemy = { version = ">=2.0.21" }
+requests = { version = ">=2.31.0,<3.0.0" }
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

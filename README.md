@@ -23,7 +23,7 @@ Every SQLAlchemy application that connects to a database needs to use an [Engine
 
 1. Host
 2. HTTP Path for a compute resource
-3. API access token
+3. API access token, or service principal connection parms
 4. Initial catalog for the connection
 5. Initial schema for the connection
 
@@ -45,6 +45,33 @@ engine = create_engine(
     f"databricks://token:{access_token}@{host}?http_path={http_path}&catalog={catalog}&schema={schema}"
     )
 ```
+
+### Service principal authentication
+
+Workspaces that prohibit Personal Access Tokens can now use Databricks service principals (see the [Databricks documentation](https://docs.databricks.com/en/dev-tools/auth/oauth-m2m) for how to create one). Supply the service principal credentials directly in the Databricks SQLAlchemy URL and set `authentication=service_principal`.
+
+```python
+import os
+from sqlalchemy import create_engine
+
+client_id = os.getenv("DATABRICKS_SP_CLIENT_ID")
+client_secret = os.getenv("DATABRICKS_SP_CLIENT_SECRET")
+host = os.getenv("DATABRICKS_SERVER_HOSTNAME")
+http_path = os.getenv("DATABRICKS_HTTP_PATH")
+catalog = os.getenv("DATABRICKS_CATALOG")
+schema = os.getenv("DATABRICKS_SCHEMA")
+
+engine = create_engine(
+    "databricks://"
+    f"{client_id}:{client_secret}"
+    f"@{host}?http_path={http_path}&catalog={catalog}&schema={schema}"
+    "&authentication=service_principal"
+)
+```
+
+`client_id` and `client_secret` are read from the username and password components of the URL. If you prefer to keep the username as `token`, you can pass them in the query string via `client_id` and `client_secret`. By default the dialect requests the Databricks `sql` OAuth scope from the workspace's `/oidc` endpoint. You can override the scopes by providing `sp_scopes` (comma separated) in the query string if you have custom scopes configured.
+
+For local development, copy `test.env.example` to `test.env`, populate it with your workspace and service principal values, and keep `test.env` untracked (it's listed in `.gitignore`). `pytest` automatically reads this file because it is referenced in `pyproject.toml` via `env_files`.
 
 ## Types
 

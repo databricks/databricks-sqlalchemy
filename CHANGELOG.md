@@ -1,5 +1,9 @@
 # Release History
 
+# Unreleased
+
+- Feature: Added first-class Databricks service principal (machine-to-machine OAuth) authentication support for SQLAlchemy connections, working across AWS, Azure, and GCP workspaces (databricks/databricks-sqlalchemy#29)
+
 # 2.0.8 (2025-09-08)
 
 - Feature: Added support for variant datatype (databricks/databricks-sqlalchemy#42 by @msrathore-db)

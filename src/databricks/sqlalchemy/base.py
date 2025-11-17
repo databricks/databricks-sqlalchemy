@@ -13,6 +13,10 @@ from databricks.sqlalchemy._parse import (
     get_comment_from_dte_output,
     parse_column_info_from_tgetcolumnsresponse,
 )
+from databricks.sqlalchemy._service_principal import (
+    ServicePrincipalConfigurationError,
+    ServicePrincipalCredentialsProvider,
+)
 
 import sqlalchemy
 from sqlalchemy import DDL, event
@@ -24,7 +28,7 @@ from sqlalchemy.engine.interfaces import (
     ReflectedTableComment,
 )
 from sqlalchemy.engine.reflection import ReflectionDefaults
-from sqlalchemy.exc import DatabaseError, SQLAlchemyError
+from sqlalchemy.exc import ArgumentError, DatabaseError, SQLAlchemyError
 
 try:
     import alembic
@@ -44,6 +48,14 @@ logger = logging.getLogger(__name__)
 
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
+
+    _SERVICE_PRINCIPAL_ALIASES = {
+        "serviceprincipal",
+        "service_principal",
+        "service-principal",
+        "serviceprincipal-auth",
+        "sp",
+    }
 
     # See sqlalchemy.engine.interfaces for descriptions of each of these properties
     name: str = "databricks"
@@ -105,14 +117,20 @@ class DatabricksDialect(default.DefaultDialect):
         # TODO: can schema be provided after HOST?
         # Expected URI format is: databricks+thrift://token:dapi***@***.cloud.databricks.com?http_path=/sql/***
 
-        kwargs = {
+        credentials_provider = self._build_service_principal_provider(url)
+
+        kwargs: Dict[str, Any] = {
             "server_hostname": url.host,
-            "access_token": url.password,
             "http_path": url.query.get("http_path"),
             "catalog": url.query.get("catalog"),
             "schema": url.query.get("schema"),
             "use_inline_params": False,
         }
+
+        if credentials_provider:
+            kwargs["credentials_provider"] = credentials_provider
+        else:
+            kwargs["access_token"] = url.password
 
         self.schema = kwargs["schema"]
         self.catalog = kwargs["catalog"]
@@ -120,6 +138,54 @@ class DatabricksDialect(default.DefaultDialect):
         self._force_paramstyle_to_native_mode()
 
         return [], kwargs
+
+    def _build_service_principal_provider(
+        self, url
+    ) -> Optional[ServicePrincipalCredentialsProvider]:
+        auth_value = (
+            url.query.get("authentication")
+            or url.query.get("auth")
+            or url.query.get("auth_type")
+        )
+        username_hint = (url.username or "").lower() if url.username else ""
+        is_service_principal = False
+
+        if auth_value and auth_value.lower() in self._SERVICE_PRINCIPAL_ALIASES:
+            is_service_principal = True
+        elif username_hint in self._SERVICE_PRINCIPAL_ALIASES:
+            is_service_principal = True
+
+        if not is_service_principal:
+            return None
+
+        client_id = url.query.get("client_id") or url.username
+        client_secret = url.password or url.query.get("client_secret")
+        if not client_id:
+            raise ArgumentError("Service principal connections require a client_id")
+        if not client_secret:
+            raise ArgumentError("Service principal connections require a client_secret")
+
+        scopes_raw = (
+            url.query.get("sp_scopes")
+            or url.query.get("sp_scope")
+            or url.query.get("scope")
+        )
+        scopes = (
+            [scope.strip() for scope in scopes_raw.split(",") if scope.strip()]
+            if scopes_raw
+            else None
+        )
+        try:
+            provider = ServicePrincipalCredentialsProvider(
+                server_hostname=url.host or "",
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=scopes,
+            )
+        except ServicePrincipalConfigurationError as exc:
+            raise ArgumentError(str(exc)) from exc
+
+        return provider
 
     def get_columns(
         self, connection, table_name, schema=None, **kwargs
