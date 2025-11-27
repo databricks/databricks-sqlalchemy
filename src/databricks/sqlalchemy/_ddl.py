@@ -98,3 +98,9 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
                 text += "\n LIMIT ALL"
             text += " OFFSET " + self.process(select._offset_clause, **kw)
         return text
+
+    def visit_try_cast(self, element, **kw):
+        return "try_cast(%s AS %s)" % (
+            self.process(element.clause, **kw),
+            self.process(element.typeclause, **kw),
+        )
