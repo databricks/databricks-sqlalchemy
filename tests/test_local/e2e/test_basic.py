@@ -541,3 +541,58 @@ class TestCommentReflection:
     def test_column_comment(self, inspector: Inspector, table: Table):
         result = inspector.get_columns(table.name)[0].get("comment")
         assert result == "column comment"
+
+
+def test_pool_pre_ping_with_closed_connection(connection_details):
+    """Test that pool_pre_ping detects closed connections and creates new ones.
+
+    This test verifies that when a connection is manually closed (simulating
+    session expiration), pool_pre_ping detects it and automatically creates
+    a new connection without raising an error to the user.
+    """
+    conn_string, connect_args = version_agnostic_connect_arguments(connection_details)
+
+    # Create engine with pool_pre_ping enabled
+    engine = create_engine(
+        conn_string,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_size=1,
+        max_overflow=0
+    )
+
+    # Step 1: Create connection and get session ID
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        # Get session ID of first connection
+        raw_conn = conn.connection.dbapi_connection
+        session_id_1 = raw_conn.get_session_id_hex()
+        assert session_id_1 is not None
+
+    # Step 2: Manually close the connection to simulate expiration
+    pooled_conn = engine.pool._pool.queue[0]
+    pooled_conn.driver_connection.close()
+
+    # Verify connection is closed
+    assert not pooled_conn.driver_connection.open
+
+    # Step 3: Try to use the closed connection - pool_pre_ping should detect and recycle
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        # Get session ID of new connection
+        raw_conn = conn.connection.dbapi_connection
+        session_id_2 = raw_conn.get_session_id_hex()
+        assert session_id_2 is not None
+
+        # Verify a NEW connection was created (different session ID)
+        assert session_id_1 != session_id_2, (
+            "pool_pre_ping should have detected the closed connection "
+            "and created a new one with a different session ID"
+        )
+
+    # Cleanup
+    engine.dispose()

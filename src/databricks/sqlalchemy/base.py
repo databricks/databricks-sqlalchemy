@@ -336,6 +336,31 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
+    def do_ping(self, dbapi_connection):
+        """Test if a database connection is alive.
+
+        This method is called by SQLAlchemy when pool_pre_ping=True to verify
+        connections are still valid before using them from the pool.
+
+        Args:
+            dbapi_connection: A raw DBAPI connection (from databricks-sql-connector)
+
+        Returns:
+            True if the connection is alive, False otherwise.
+        """
+        try:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SELECT VERSION()")
+                cursor.fetchone()
+                return True
+            finally:
+                cursor.close()
+        except Exception:
+            # Any exception means the connection is dead
+            # SQLAlchemy will discard it and create a new one
+            return False
+
     @reflection.cache
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
