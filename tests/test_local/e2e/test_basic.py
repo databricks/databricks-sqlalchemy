@@ -601,9 +601,8 @@ def test_pool_pre_ping_with_closed_connection(connection_details):
 def test_is_disconnect_handles_runtime_errors(db_engine):
     """Test that is_disconnect() properly classifies disconnect errors during query execution.
 
-    This tests the reactive error handling (complementary to pool_pre_ping's proactive checking).
     When a connection fails DURING a query, is_disconnect() should recognize the error
-    and tell SQLAlchemy to invalidate the connection.
+    and tell SQLAlchemy to invalidate the connection so the next query gets a fresh one.
     """
     from sqlalchemy import create_engine, text
     from sqlalchemy.exc import DBAPIError

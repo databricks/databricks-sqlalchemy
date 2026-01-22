@@ -336,35 +336,6 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
-    def do_ping(self, dbapi_connection):
-        """Test if a database connection is alive.
-
-        This method is called by SQLAlchemy when pool_pre_ping=True to verify
-        connections are still valid before using them from the pool.
-
-        This implementation improves upon SQLAlchemy's default do_ping() by
-        wrapping the cursor creation in a try block, which properly handles
-        cases where the connection is closed and cursor() itself raises an exception.
-
-        Args:
-            dbapi_connection: A raw DBAPI connection (from databricks-sql-connector)
-
-        Returns:
-            True if the connection is alive, False otherwise.
-        """
-        try:
-            cursor = dbapi_connection.cursor()
-            try:
-                cursor.execute("SELECT VERSION()")
-                cursor.fetchone()
-                return True
-            finally:
-                cursor.close()
-        except Exception:
-            # Any exception means the connection is dead
-            # SQLAlchemy will discard it and create a new one
-            return False
-
     def is_disconnect(self, e, connection, cursor):
         """Determine if an exception indicates the connection was lost.
 
@@ -373,9 +344,10 @@ class DatabricksDialect(default.DefaultDialect):
         returns True, SQLAlchemy will invalidate the connection and create a new
         one for the next operation.
 
-        This is complementary to do_ping():
-        - do_ping() is proactive: checks connection health BEFORE queries
-        - is_disconnect() is reactive: classifies errors AFTER they occur
+        This method is also used by SQLAlchemy's default do_ping() implementation
+        when pool_pre_ping=True. If do_ping() encounters an exception, it calls
+        is_disconnect() to classify the error and determine whether to invalidate
+        the connection.
 
         Args:
             e: The exception that was raised
