@@ -342,6 +342,10 @@ class DatabricksDialect(default.DefaultDialect):
         This method is called by SQLAlchemy when pool_pre_ping=True to verify
         connections are still valid before using them from the pool.
 
+        This implementation improves upon SQLAlchemy's default do_ping() by
+        wrapping the cursor creation in a try block, which properly handles
+        cases where the connection is closed and cursor() itself raises an exception.
+
         Args:
             dbapi_connection: A raw DBAPI connection (from databricks-sql-connector)
 
@@ -360,6 +364,39 @@ class DatabricksDialect(default.DefaultDialect):
             # Any exception means the connection is dead
             # SQLAlchemy will discard it and create a new one
             return False
+
+    def is_disconnect(self, e, connection, cursor):
+        """Determine if an exception indicates the connection was lost.
+
+        This method is called by SQLAlchemy after exceptions occur during query
+        execution to determine if the error was due to a lost connection. If this
+        returns True, SQLAlchemy will invalidate the connection and create a new
+        one for the next operation.
+
+        This is complementary to do_ping():
+        - do_ping() is proactive: checks connection health BEFORE queries
+        - is_disconnect() is reactive: classifies errors AFTER they occur
+
+        Args:
+            e: The exception that was raised
+            connection: The connection that raised the exception (may be None)
+            cursor: The cursor that raised the exception (may be None)
+
+        Returns:
+            True if the error indicates a disconnect, False otherwise
+        """
+        from databricks.sql.exc import InterfaceError, DatabaseError
+
+        # InterfaceError: Client-side errors (e.g., connection already closed)
+        if isinstance(e, InterfaceError):
+            return True
+
+        # DatabaseError: Server-side errors with invalid handle indicate session expired
+        if isinstance(e, DatabaseError):
+            error_msg = str(e).lower()
+            return "invalid" in error_msg and "handle" in error_msg
+
+        return False
 
     @reflection.cache
     def has_table(

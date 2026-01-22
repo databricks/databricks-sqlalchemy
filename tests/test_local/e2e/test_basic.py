@@ -596,3 +596,73 @@ def test_pool_pre_ping_with_closed_connection(connection_details):
 
     # Cleanup
     engine.dispose()
+
+
+def test_is_disconnect_handles_runtime_errors(db_engine):
+    """Test that is_disconnect() properly classifies disconnect errors during query execution.
+
+    This tests the reactive error handling (complementary to pool_pre_ping's proactive checking).
+    When a connection fails DURING a query, is_disconnect() should recognize the error
+    and tell SQLAlchemy to invalidate the connection.
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import DBAPIError
+
+    engine = create_engine(
+        db_engine.url,
+        pool_pre_ping=False,  # Disabled - we want to test is_disconnect, not do_ping
+        pool_size=1,
+        max_overflow=0,
+    )
+
+    # Step 1: Execute a successful query
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        # Get session ID of working connection
+        raw_conn = conn.connection.dbapi_connection
+        session_id_1 = raw_conn.get_session_id_hex()
+        assert session_id_1 is not None
+
+    # Step 2: Manually close the connection to simulate server-side session expiration
+    pooled_conn = engine.pool._pool.queue[0]
+    pooled_conn.driver_connection.close()
+
+    # Step 3: Try to execute query on closed connection
+    # This should:
+    # 1. Fail with an exception
+    # 2. is_disconnect() gets called by SQLAlchemy
+    # 3. Returns True (recognizes it as disconnect error)
+    # 4. SQLAlchemy invalidates the connection
+    # 5. Next operation gets a fresh connection
+
+    # First query will fail because connection is closed
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT VERSION()")).scalar()
+        # If we get here without exception, the connection wasn't actually closed
+        pytest.skip("Connection wasn't properly closed - cannot test is_disconnect")
+    except DBAPIError as e:
+        # Expected - connection was closed
+        # is_disconnect() should have been called and returned True
+        # This causes SQLAlchemy to invalidate the connection
+        assert "closed" in str(e).lower() or "invalid" in str(e).lower()
+
+    # Step 4: Next query should work because is_disconnect() invalidated the bad connection
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        # Verify we got a NEW connection
+        raw_conn = conn.connection.dbapi_connection
+        session_id_2 = raw_conn.get_session_id_hex()
+        assert session_id_2 is not None
+
+        # Different session ID proves connection was invalidated and recreated
+        assert session_id_1 != session_id_2, (
+            "is_disconnect() should have invalidated the bad connection, "
+            "causing SQLAlchemy to create a new one with different session ID"
+        )
+
+    engine.dispose()
