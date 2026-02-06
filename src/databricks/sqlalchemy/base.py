@@ -372,10 +372,7 @@ class DatabricksDialect(default.DefaultDialect):
         # This catches errors like "Cannot create cursor from closed connection"
         if isinstance(e, Error):
             error_msg = str(e).lower()
-            return (
-                "closed" in error_msg
-                or "cannot create cursor" in error_msg
-            )
+            return "closed" in error_msg or "cannot create cursor" in error_msg
 
         return False
 
