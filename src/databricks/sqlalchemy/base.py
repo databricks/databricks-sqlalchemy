@@ -357,22 +357,35 @@ class DatabricksDialect(default.DefaultDialect):
         Returns:
             True if the error indicates a disconnect, False otherwise
         """
-        from databricks.sql.exc import InterfaceError, DatabaseError, Error
+        from databricks.sql.exc import (
+            Error,
+            InterfaceError,
+            DatabaseError,
+            RequestError,
+        )
 
-        # InterfaceError: Client-side errors (e.g., connection already closed)
+        error_msg = str(e).lower()
+
+        # InterfaceError: closed connection/cursor errors from client.py
+        # All raised when self.open is False:
         if isinstance(e, InterfaceError):
+            return "closed" in error_msg
+
+        # RequestError (subclass of DatabaseError via OperationalError):
+        # transport/network-level errors indicating connection is unusable.
+        # Check before DatabaseError since RequestError is a subclass.
+        if isinstance(e, RequestError):
             return True
 
-        # DatabaseError: Server-side errors with invalid handle indicate session expired
+        # DatabaseError: server-side errors indicating session/operation gone
         if isinstance(e, DatabaseError):
-            error_msg = str(e).lower()
-            return "invalid" in error_msg and "handle" in error_msg
+            return ("invalid" in error_msg and "handle" in error_msg) or (
+                "unexpectedly closed server side" in error_msg
+            )
 
-        # Base Error class: Check for closed connection errors
-        # This catches errors like "Cannot create cursor from closed connection"
+        # Base Error class: older connector versions raise Error (not InterfaceError)
         if isinstance(e, Error):
-            error_msg = str(e).lower()
-            return "closed" in error_msg or "cannot create cursor" in error_msg
+            return "closed connection" in error_msg or "closed cursor" in error_msg
 
         return False
 
