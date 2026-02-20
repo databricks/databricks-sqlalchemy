@@ -1,5 +1,10 @@
 # Release History
 
+# 2.0.9 (2026-02-20)
+
+- Feature: Added `pool_pre_ping` support via `do_ping()` override to detect and recycle dead connections (databricks/databricks-sqlalchemy#54 by @msrathore-db)
+- Fix: Pinned poetry version in CI workflows to fix build failures (databricks/databricks-sqlalchemy#54 by @msrathore-db)
+
 # 2.0.8 (2025-09-08)
 
 - Feature: Added support for variant datatype (databricks/databricks-sqlalchemy#42 by @msrathore-db)
