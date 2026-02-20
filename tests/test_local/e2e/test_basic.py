@@ -541,3 +541,50 @@ class TestCommentReflection:
     def test_column_comment(self, inspector: Inspector, table: Table):
         result = inspector.get_columns(table.name)[0].get("comment")
         assert result == "column comment"
+
+
+def test_pool_pre_ping_with_closed_connection(connection_details):
+    """Test that pool_pre_ping detects closed connections and creates new ones.
+
+    When a pooled connection is closed (simulating session expiration),
+    do_ping() detects it and SQLAlchemy creates a new connection.
+    """
+    conn_string, connect_args = version_agnostic_connect_arguments(connection_details)
+
+    engine = create_engine(
+        conn_string,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_size=1,
+        max_overflow=0,
+    )
+
+    # Step 1: Use a connection and record its session ID
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        raw_conn = conn.connection.dbapi_connection
+        session_id_1 = raw_conn.get_session_id_hex()
+        assert session_id_1 is not None
+
+    # Step 2: Close the pooled connection to simulate session expiration
+    pooled_conn = engine.pool._pool.queue[0]
+    pooled_conn.driver_connection.close()
+    assert not pooled_conn.driver_connection.open
+
+    # Step 3: pool_pre_ping should detect the dead connection and create a new one
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT VERSION()")).scalar()
+        assert result is not None
+
+        raw_conn = conn.connection.dbapi_connection
+        session_id_2 = raw_conn.get_session_id_hex()
+        assert session_id_2 is not None
+
+        assert session_id_1 != session_id_2, (
+            "pool_pre_ping should have detected the closed connection "
+            "and created a new one with a different session ID"
+        )
+
+    engine.dispose()

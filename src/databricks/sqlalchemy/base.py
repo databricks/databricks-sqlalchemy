@@ -336,6 +336,25 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
+    def do_ping(self, dbapi_connection):
+        """Check if the connection is usable.
+
+        Called by SQLAlchemy when pool_pre_ping=True before checking out
+        a connection from the pool. If this returns False, the connection
+        is invalidated and a new one is created.
+
+        Any error during the ping means the connection is unusable
+        """
+        try:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SELECT 1")
+            finally:
+                cursor.close()
+            return True
+        except Exception:
+            return False
+
     @reflection.cache
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
