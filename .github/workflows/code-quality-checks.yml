@@ -13,7 +13,9 @@ permissions:
 
 jobs:
     check-linting:
-        runs-on: ubuntu-latest
+        runs-on:
+            group: databricks-protected-runner-group
+            labels: linux-ubuntu-latest
         strategy:
             matrix:
                 python-version: [3.9, "3.10", "3.11", "3.12"]
@@ -66,7 +68,9 @@ jobs:
               run: poetry run black --check src
 
     check-types:
-        runs-on: ubuntu-latest
+        runs-on:
+            group: databricks-protected-runner-group
+            labels: linux-ubuntu-latest
         strategy:
             matrix:
                 python-version: [3.9, "3.10", "3.11", "3.12"]

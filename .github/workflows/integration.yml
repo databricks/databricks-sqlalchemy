@@ -12,7 +12,9 @@ permissions:
 
 jobs:
     run-e2e-tests:
-        runs-on: ubuntu-latest
+        runs-on:
+            group: databricks-protected-runner-group
+            labels: linux-ubuntu-latest
         environment: azure-prod
         env:
             DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
