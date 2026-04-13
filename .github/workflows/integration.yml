@@ -9,10 +9,13 @@ on:
 
 permissions:
     contents: read
+    id-token: write
 
 jobs:
     run-e2e-tests:
-        runs-on: ubuntu-latest
+        runs-on:
+            group: databricks-protected-runner-group
+            labels: linux-ubuntu-latest
         environment: azure-prod
         env:
             DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
@@ -22,43 +25,12 @@ jobs:
             DATABRICKS_SCHEMA: ${{ secrets.SQLALCHEMY_SCHEMA }}
             DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
         steps:
-            #----------------------------------------------
-            #       check-out repo and set-up python
-            #----------------------------------------------
             - name: Check out repository
-              uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
-            - name: Set up python
-              id: setup-python
-              uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - name: Setup Poetry
+              uses: ./.github/actions/setup-poetry
               with:
                   python-version: "3.10"
-            #----------------------------------------------
-            #  -----  install & configure poetry  -----
-            #----------------------------------------------
-            - name: Install Poetry
-              uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-              with:
-                  version: "2.2.1"
-                  virtualenvs-create: true
-                  virtualenvs-in-project: true
-                  installer-parallel: true
-
-            #----------------------------------------------
-            #       load cached venv if cache exists
-            #----------------------------------------------
-            - name: Load cached venv
-              id: cached-poetry-dependencies
-              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-              with:
-                  path: .venv
-                  key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-            #----------------------------------------------
-            # install dependencies if cache does not exist
-            #----------------------------------------------
-            - name: Install dependencies
-              run: poetry install --no-interaction --all-extras
-            #----------------------------------------------
-            #              run test suite
-            #----------------------------------------------
+                  install-args: "--all-extras"
             - name: Run SQL Alchemy tests
               run: poetry run python -m pytest tests/test_local
