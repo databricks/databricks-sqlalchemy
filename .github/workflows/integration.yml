@@ -25,47 +25,28 @@ jobs:
             DATABRICKS_SCHEMA: ${{ secrets.SQLALCHEMY_SCHEMA }}
             DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
         steps:
-            #----------------------------------------------
-            #       check-out repo and set-up python
-            #----------------------------------------------
             - name: Check out repository
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - name: Setup JFrog
+              uses: ./.github/actions/setup-jfrog
             - name: Set up python
               id: setup-python
               uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
               with:
                   python-version: "3.10"
-            #----------------------------------------------
-            #       setup jfrog for dependency install
-            #----------------------------------------------
-            - name: Setup JFrog
-              uses: ./.github/actions/setup-jfrog
-            #----------------------------------------------
-            #  -----  install & configure poetry  -----
-            #----------------------------------------------
             - name: Install Poetry
               run: |
                   pip install poetry==2.2.1
                   poetry config virtualenvs.create true
                   poetry config virtualenvs.in-project true
                   poetry config installer.parallel true
-
-            #----------------------------------------------
-            #       load cached venv if cache exists
-            #----------------------------------------------
             - name: Load cached venv
               id: cached-poetry-dependencies
               uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
               with:
                   path: .venv
                   key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-            #----------------------------------------------
-            # install dependencies if cache does not exist
-            #----------------------------------------------
             - name: Install dependencies
               run: poetry install --no-interaction --all-extras
-            #----------------------------------------------
-            #              run test suite
-            #----------------------------------------------
             - name: Run SQL Alchemy tests
               run: poetry run python -m pytest tests/test_local

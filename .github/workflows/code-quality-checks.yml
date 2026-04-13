@@ -21,54 +21,32 @@ jobs:
             matrix:
                 python-version: [3.9, "3.10", "3.11", "3.12"]
         steps:
-            #----------------------------------------------
-            #       check-out repo and set-up python
-            #----------------------------------------------
             - name: Check out repository
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - name: Setup JFrog
+              uses: ./.github/actions/setup-jfrog
             - name: Set up python ${{ matrix.python-version }}
               id: setup-python
               uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
               with:
                   python-version: ${{ matrix.python-version }}
-            #----------------------------------------------
-            #       setup jfrog for dependency install
-            #----------------------------------------------
-            - name: Setup JFrog
-              uses: ./.github/actions/setup-jfrog
-            #----------------------------------------------
-            #  -----  install & configure poetry  -----
-            #----------------------------------------------
             - name: Install Poetry
               run: |
                   pip install poetry==2.2.1
                   poetry config virtualenvs.create true
                   poetry config virtualenvs.in-project true
                   poetry config installer.parallel true
-
-            #----------------------------------------------
-            #       load cached venv if cache exists
-            #----------------------------------------------
             - name: Load cached venv
               id: cached-poetry-dependencies
               uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
               with:
                   path: .venv
                   key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-            #----------------------------------------------
-            # install dependencies if cache does not exist
-            #----------------------------------------------
             - name: Install dependencies
               if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
               run: poetry install --no-interaction --no-root
-            #----------------------------------------------
-            # install your root project, if required
-            #----------------------------------------------
             - name: Install library
               run: poetry install --no-interaction
-            #----------------------------------------------
-            #              black the code
-            #----------------------------------------------
             - name: Black
               run: poetry run black --check src
 
@@ -80,55 +58,33 @@ jobs:
             matrix:
                 python-version: [3.9, "3.10", "3.11", "3.12"]
         steps:
-            #----------------------------------------------
-            #       check-out repo and set-up python
-            #----------------------------------------------
             - name: Check out repository
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - name: Setup JFrog
+              uses: ./.github/actions/setup-jfrog
             - name: Set up python ${{ matrix.python-version }}
               id: setup-python
               uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
               with:
                   python-version: ${{ matrix.python-version }}
-            #----------------------------------------------
-            #       setup jfrog for dependency install
-            #----------------------------------------------
-            - name: Setup JFrog
-              uses: ./.github/actions/setup-jfrog
-            #----------------------------------------------
-            #  -----  install & configure poetry  -----
-            #----------------------------------------------
             - name: Install Poetry
               run: |
                   pip install poetry==2.2.1
                   poetry config virtualenvs.create true
                   poetry config virtualenvs.in-project true
                   poetry config installer.parallel true
-
-            #----------------------------------------------
-            #       load cached venv if cache exists
-            #----------------------------------------------
             - name: Load cached venv
               id: cached-poetry-dependencies
               uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
               with:
                   path: .venv
                   key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-            #----------------------------------------------
-            # install dependencies if cache does not exist
-            #----------------------------------------------
             - name: Install dependencies
               if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
               run: poetry install --no-interaction --no-root
-            #----------------------------------------------
-            # install your root project, if required
-            #----------------------------------------------
             - name: Install library
               run: poetry install --no-interaction
-            #----------------------------------------------
-            #              mypy the code
-            #----------------------------------------------
             - name: Mypy
               run: |
-                  mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
+                  mkdir .mypy_cache
                   poetry run mypy --install-types --non-interactive src
