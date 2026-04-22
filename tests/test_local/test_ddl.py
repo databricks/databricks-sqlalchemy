@@ -337,19 +337,50 @@ class TestBindParamQuoting(DDLTestBase):
         assert ":`col-name_m0`" in sql
         assert ":`col-name_m1`" in sql
 
-    def test_in_clause_with_hyphenated_column_falls_through_to_postcompile(self):
-        """IN clauses use ``post_compile`` params which our override skips
-        (the rendered ``__[POSTCOMPILE_...]`` marker is not a bind name).
-        The anonymized bind SQLAlchemy assigns to the IN parameter does
-        still get backticked because it contains a hyphen (``col_name_1``
-        would be fine, but the column name slug can leak hyphens).
+    def test_in_clause_with_hyphenated_column_compiles_to_postcompile(self):
+        """The initial compilation leaves an IN clause as a POSTCOMPILE
+        placeholder. The placeholder itself isn't a bind marker so no
+        quoting is needed at this stage — the actual expanded markers
+        (``:\\`col-name_1_1\\``, …) are rendered at expansion time by our
+        ``_literal_execute_expanding_parameter`` override (see
+        ``test_in_clause_expansion_renders_backticked_markers``).
         """
         from sqlalchemy import select
 
         metadata = MetaData()
         table = Table("t", metadata, Column("col-name", String()))
         stmt = select(table).where(table.c["col-name"].in_(["a", "b"]))
+        sql = str(stmt.compile(bind=self.engine))
+        assert "POSTCOMPILE_col-name_1" in sql
+
+    def test_in_clause_expansion_renders_backticked_markers(self):
+        """Exercise the three sites that invoke
+        ``_literal_execute_expanding_parameter``:
+
+        * normal execute-time expansion via ``construct_expanded_state``
+        * ``compile_kwargs={'render_postcompile': True}`` — which fires
+          inside super's ``__init__``, before any post-super subclass
+          init would take effect
+        """
+        from sqlalchemy import select
+
+        metadata = MetaData()
+        table = Table("t", metadata, Column("col-name", String()))
+        stmt = select(table).where(table.c["col-name"].in_(["a", "b", "c"]))
+
+        # (1) render_postcompile=True at compile time — fires inside super __init__
+        rendered = str(
+            stmt.compile(bind=self.engine, compile_kwargs={"render_postcompile": True})
+        )
+        assert ":`col-name_1_1`" in rendered
+        assert ":`col-name_1_2`" in rendered
+        assert ":`col-name_1_3`" in rendered
+
+        # (2) construct_expanded_state at execute time
         compiled = stmt.compile(bind=self.engine)
-        # The POSTCOMPILE marker goes through super() — just make sure we
-        # didn't crash and the SQL is well-formed.
-        assert "POSTCOMPILE" in str(compiled) or "IN (" in str(compiled)
+        expanded = compiled.construct_expanded_state(
+            {"col-name_1": ["a", "b", "c"]}
+        )
+        assert ":`col-name_1_1`" in expanded.statement
+        assert ":`col-name_1_2`" in expanded.statement
+        assert ":`col-name_1_3`" in expanded.statement

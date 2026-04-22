@@ -110,23 +110,21 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
       ``bindparam_string`` via ``self.process(statement)``. Oracle
       overrides this same method (``cx_oracle.py:781``) to quote-wrap
       names, and we do the same here.
-    * **Execute-time IN expansion** — SQLAlchemy's
+    * **IN-clause expansion** — SQLAlchemy's
       ``_literal_execute_expanding_parameter`` builds expanded markers
       (``:col-name_1, :col-name_2, ...``) directly from
-      ``self.bindtemplate``, bypassing ``bindparam_string``. We swap
-      ``bindtemplate`` after super's ``__init__`` to ensure that path
-      also emits backticked markers.
+      ``self.bindtemplate``, bypassing ``bindparam_string``. This method
+      is called from three sites: at execute time
+      (``default.py::_execute_context``), during compile time when the
+      user passes ``compile_kwargs={'render_postcompile': True}``, and
+      from ``construct_expanded_state``. We intercept by overriding the
+      method itself rather than swapping ``bindtemplate`` in
+      ``__init__``, because the ``render_postcompile=True`` path fires
+      inside super's own ``__init__`` — before a subclass ``__init__``
+      post-super override would take effect.
     """
 
     _BACKTICKED_BIND_TEMPLATE = ":`%(name)s`"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Super sets self.bindtemplate from BIND_TEMPLATES[paramstyle]
-        # near the end of its __init__ (for execute-time use, including
-        # IN-clause expansion). Override it here so the expansion path
-        # renders backticked markers too.
-        self.bindtemplate = self._BACKTICKED_BIND_TEMPLATE
 
     def bindparam_string(self, name, **kw):
         # Fall through to super for the specialized render paths it
@@ -153,6 +151,28 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
             if type_impl.render_bind_cast:
                 ret = self.render_bind_cast(bindparam_type, type_impl, ret)
         return ret
+
+    def _literal_execute_expanding_parameter(self, name, parameter, values):
+        # Super reads ``self.bindtemplate`` (or ``compilation_bindtemplate``
+        # for numeric paramstyles) once into a local variable and uses it to
+        # render every expanded marker. Swap both to our backticked template
+        # for the duration of the call, then restore, so any later read sees
+        # the original values. This covers execute-time expansion, the
+        # ``render_postcompile=True`` compile-kwarg path that fires inside
+        # super's ``__init__``, and ``construct_expanded_state``.
+        saved_bt = getattr(self, "bindtemplate", None)
+        saved_cbt = getattr(self, "compilation_bindtemplate", None)
+        self.bindtemplate = self._BACKTICKED_BIND_TEMPLATE
+        self.compilation_bindtemplate = self._BACKTICKED_BIND_TEMPLATE
+        try:
+            return super()._literal_execute_expanding_parameter(
+                name, parameter, values
+            )
+        finally:
+            if saved_bt is not None:
+                self.bindtemplate = saved_bt
+            if saved_cbt is not None:
+                self.compilation_bindtemplate = saved_cbt
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
