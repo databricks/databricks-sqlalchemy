@@ -55,7 +55,7 @@ def version_agnostic_connect_arguments(connection_details) -> Tuple[str, dict]:
     CATALOG = connection_details["catalog"]
     SCHEMA = connection_details["schema"]
 
-    ua_connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+    ua_connect_args = {"user_agent_entry": USER_AGENT_TOKEN}
 
     if sqlalchemy_1_3():
         conn_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}"
@@ -510,7 +510,7 @@ class TestCommentReflection:
         SCHEMA = connection_details["schema"]
 
         connection_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}"
-        connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+        connect_args = {"user_agent_entry": USER_AGENT_TOKEN}
 
         engine = create_engine(connection_string, connect_args=connect_args)
         return engine

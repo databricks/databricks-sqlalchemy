@@ -53,7 +53,7 @@ schema = os.getenv("DATABRICKS_SCHEMA")
 # See src/databricks/sql/thrift_backend.py for complete list
 extra_connect_args = {
 	"_tls_verify_hostname": True,
-	"_user_agent_entry": "PySQL Example Script",
+	"user_agent_entry": "PySQL Example Script",
 }
 
 
