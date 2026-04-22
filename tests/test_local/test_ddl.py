@@ -246,12 +246,13 @@ class TestBindParamQuoting(DDLTestBase):
             assert f":`{n}`" in sql, f"bind marker missing for {n!r}"
             assert params[n] == values[n]
 
-    def test_sqlalchemy_escape_map_chars_still_work(self):
-        """SQLAlchemy's default ``bindname_escape_characters`` translates
-        a few chars (``.`` → ``_``, ``[`` → ``_``, ``]`` → ``_``, ``:`` →
-        ``C``, ``%`` → ``P``) before our backtick wrapping applies. That's
-        fine: the translated bind name is still backtick-quoted, and
-        ``escaped_bind_names`` translates the params dict key to match.
+    def test_chars_in_sqlalchemy_default_escape_map_still_work(self):
+        """Characters that SQLAlchemy's default ``bindname_escape_characters``
+        would normally pre-translate (``.``, ``[``, ``]``, ``:``, ``%``)
+        render through our override verbatim inside the backtick-quoted
+        marker. Backticks make the pre-translation unnecessary — the
+        params dict key sent to the driver matches the column name
+        exactly, which is simpler than the escape-map indirection.
         Verified end-to-end against a live warehouse.
         """
         metadata = MetaData()
@@ -273,17 +274,16 @@ class TestBindParamQuoting(DDLTestBase):
             },
         )
         sql = str(compiled)
-        # The bind name is translated by the escape map, then backticked
-        assert ":`col_with_dot`" in sql
-        assert ":`col_bracket_`" in sql
-        assert ":`colCcolon`" in sql
-        assert ":`colPpercent`" in sql
+        assert ":`col.with.dot`" in sql
+        assert ":`col[bracket]`" in sql
+        assert ":`col:colon`" in sql
+        assert ":`col%percent`" in sql
 
-        # The driver receives translated keys (escaped_bind_names tells
-        # construct_params how to rewrite the incoming dict).
         params = compiled.construct_params()
-        assert params["col_with_dot"] == "d"
-        assert params["colCcolon"] == "c"
+        assert params["col.with.dot"] == "d"
+        assert params["col:colon"] == "c"
+        assert params["col[bracket]"] == "b"
+        assert params["col%percent"] == "p"
 
     def test_unicode_column_names(self):
         """Databricks allows arbitrary Unicode inside backtick-quoted

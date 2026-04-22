@@ -84,55 +84,75 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
 
 
 class DatabricksStatementCompiler(compiler.SQLCompiler):
-    # Override the rendered marker format so every bind parameter is
-    # wrapped in backticks (`` :`name` ``) at render time. Databricks
-    # named parameter markers accept two identifier forms per
-    # ``SqlBaseParser.g4``: a bare ``IDENTIFIER`` (``[A-Za-z_][A-Za-z0-9_]*``)
-    # or a ``quotedIdentifier`` wrapped in backticks. DataFrame-origin
-    # column names frequently contain hyphens (e.g. ``col-with-hyphen``),
-    # which SQLAlchemy would otherwise render verbatim as an invalid bare
-    # marker ``:col-with-hyphen`` — the parser splits on ``-`` and reports
-    # UNBOUND_SQL_PARAMETER.
-    #
-    # Backticks are valid for *every* identifier (plain names included),
-    # verified empirically against a Databricks SQL warehouse. Setting the
-    # template here rather than overriding ``bindparam_string`` ensures the
-    # quoting applies uniformly across every rendering path — the normal
-    # bindparam_string, the escape-from path, and crucially the
-    # ``_literal_execute_expanding_parameter`` path used for IN clauses,
-    # which builds its own expanded markers directly from this template.
-    #
-    # The backticks are SQL-side *quoting* only: the parameter's logical
-    # name is still the text between them, so the params dict passed to
-    # the driver keeps the original unquoted key — ``escaped_bind_names``
-    # is left empty and ``construct_params`` passes keys through unchanged.
+    """Render every bind parameter marker wrapped in backticks.
 
-    # Fixed template for this dialect. We use properties (with a setter
-    # that ignores the incoming value) because SQLAlchemy's SQLCompiler
-    # assigns ``self.bindtemplate`` / ``self.compilation_bindtemplate``
-    # from ``BIND_TEMPLATES[dialect.paramstyle]`` inside its own
-    # ``__init__`` — which is also where statement compilation runs. A
-    # subclass override in ``__init__`` runs too late, and a class-level
-    # attribute is shadowed by super's instance assignment. A property
-    # descriptor intercepts both the read (forcing our value) and the
-    # write (no-op), so the template is fixed regardless of order.
+    Databricks named parameter markers accept two forms (per the Spark
+    SQL grammar ``SqlBaseParser.g4``): a bare ``IDENTIFIER``
+    (``[A-Za-z_][A-Za-z0-9_]*``) or a ``quotedIdentifier`` wrapped in
+    backticks. DataFrame-origin column names frequently contain hyphens
+    (e.g. ``col-with-hyphen``), which SQLAlchemy would otherwise render
+    verbatim as an invalid bare marker ``:col-with-hyphen`` — the parser
+    splits on ``-`` and reports ``UNBOUND_SQL_PARAMETER``.
+
+    Backticks are valid for *every* identifier (verified end-to-end
+    against a Databricks SQL warehouse), so we wrap unconditionally.
+    This mirrors Oracle's ``:"name"`` approach to the same grammar
+    constraint (see ``dialects/oracle/cx_oracle.py::OracleCompiler_cx_oracle``).
+    The backticks are SQL-side *quoting* only: the parameter's logical
+    name is still the text between them, so the params dict passed to
+    the driver keeps the original unquoted key. We leave
+    ``escaped_bind_names`` untouched, so ``construct_params`` passes
+    keys through unchanged.
+
+    Two render paths need covering:
+
+    * **Compile-time rendering** — statement compilation calls
+      ``bindparam_string`` via ``self.process(statement)``. Oracle
+      overrides this same method (``cx_oracle.py:781``) to quote-wrap
+      names, and we do the same here.
+    * **Execute-time IN expansion** — SQLAlchemy's
+      ``_literal_execute_expanding_parameter`` builds expanded markers
+      (``:col-name_1, :col-name_2, ...``) directly from
+      ``self.bindtemplate``, bypassing ``bindparam_string``. We swap
+      ``bindtemplate`` after super's ``__init__`` to ensure that path
+      also emits backticked markers.
+    """
+
     _BACKTICKED_BIND_TEMPLATE = ":`%(name)s`"
 
-    @property
-    def bindtemplate(self):
-        return self._BACKTICKED_BIND_TEMPLATE
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Super sets self.bindtemplate from BIND_TEMPLATES[paramstyle]
+        # near the end of its __init__ (for execute-time use, including
+        # IN-clause expansion). Override it here so the expansion path
+        # renders backticked markers too.
+        self.bindtemplate = self._BACKTICKED_BIND_TEMPLATE
 
-    @bindtemplate.setter
-    def bindtemplate(self, _value):
-        pass
+    def bindparam_string(self, name, **kw):
+        # Fall through to super for the specialized render paths it
+        # already handles (POSTCOMPILE placeholder; escape-map translation
+        # for chars like '.', '[', ']', etc. that super rewrites before
+        # rendering). For those cases super's own rendering is correct;
+        # we only intercept the primary path where the name is passed
+        # through unmodified into the standard bindtemplate.
+        if kw.get("post_compile", False) or kw.get("escaped_from"):
+            return super().bindparam_string(name, **kw)
 
-    @property
-    def compilation_bindtemplate(self):
-        return self._BACKTICKED_BIND_TEMPLATE
+        accumulate = kw.get("accumulate_bind_names")
+        if accumulate is not None:
+            accumulate.add(name)
+        visited = kw.get("visited_bindparam")
+        if visited is not None:
+            visited.append(name)
 
-    @compilation_bindtemplate.setter
-    def compilation_bindtemplate(self, _value):
-        pass
+        ret = self._BACKTICKED_BIND_TEMPLATE % {"name": name}
+
+        bindparam_type = kw.get("bindparam_type")
+        if bindparam_type is not None and self.dialect._bind_typing_render_casts:
+            type_impl = bindparam_type._unwrapped_dialect_impl(self.dialect)
+            if type_impl.render_bind_cast:
+                ret = self.render_bind_cast(bindparam_type, type_impl, ret)
+        return ret
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
