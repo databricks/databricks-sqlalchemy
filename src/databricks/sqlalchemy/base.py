@@ -66,6 +66,15 @@ class DatabricksDialect(default.DefaultDialect):
     supports_sequences: bool = False
     supports_native_boolean: bool = True
 
+    # When True (default), every named bind parameter is rendered wrapped in
+    # backticks (`` :`name` ``) so that column names containing characters
+    # which are illegal in bare Databricks parameter identifiers (hyphens,
+    # spaces, dots, leading digits, etc.) work transparently. Set to False
+    # via the URL query string — ``?quote_bind_params=false`` — to fall back
+    # to stock SQLAlchemy bind-name rendering if this quoting causes an
+    # unexpected regression.
+    quote_bind_params: bool = True
+
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
@@ -116,6 +125,10 @@ class DatabricksDialect(default.DefaultDialect):
 
         self.schema = kwargs["schema"]
         self.catalog = kwargs["catalog"]
+
+        raw_quote_flag = url.query.get("quote_bind_params")
+        if raw_quote_flag is not None:
+            self.quote_bind_params = raw_quote_flag.lower() not in ("false", "0", "no")
 
         self._force_paramstyle_to_native_mode()
 

@@ -84,50 +84,52 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
 
 
 class DatabricksStatementCompiler(compiler.SQLCompiler):
-    # Names that a bare Databricks named-parameter marker (`:name`) accepts:
-    # a letter or underscore followed by letters, digits, or underscores.
-    # Anything outside that set — hyphens, spaces, dots, brackets, a leading
-    # digit, etc. — must be wrapped in backticks (`:`name``), which the
-    # Spark/Databricks SQL grammar accepts as a quoted parameter identifier.
-    _bindname_is_bare_identifier = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
     def bindparam_string(self, name, **kw):
-        """Render a bind parameter marker.
+        """Render a bind parameter marker wrapped in backticks.
 
-        Databricks named parameter markers only accept bare identifiers
-        ([A-Za-z_][A-Za-z0-9_]*) out of the box. DataFrame-origin column
-        names frequently contain hyphens (e.g. ``col-with-hyphen``), which
-        SQLAlchemy would otherwise pass through verbatim and produce an
-        invalid marker ``:col-with-hyphen`` — the parser splits on ``-``
-        and reports UNBOUND_SQL_PARAMETER.
+        Databricks named parameter markers accept two identifier forms
+        (per ``SqlBaseParser.g4``): a bare ``IDENTIFIER``
+        (``[A-Za-z_][A-Za-z0-9_]*``) or a ``quotedIdentifier`` wrapped in
+        backticks. DataFrame-origin column names frequently contain
+        hyphens (e.g. ``col-with-hyphen``), which SQLAlchemy would
+        otherwise pass through verbatim and produce an invalid marker
+        ``:col-with-hyphen`` — the parser splits on ``-`` and reports
+        UNBOUND_SQL_PARAMETER.
 
-        The Spark SQL grammar accepts a quoted form ``:`col-with-hyphen```,
-        mirroring Oracle's ``:"name"`` pattern. The backticks are *quoting*
-        only: the parameter's logical name is still the text between them,
-        so the params dict sent to the driver must keep the original
-        unquoted key. We therefore emit the backticked marker directly
-        without populating ``escaped_bind_names`` — leaving the key
-        translation in ``construct_params`` a no-op.
+        Backticks are valid for *every* identifier (plain names included),
+        verified empirically against a Databricks SQL warehouse, so we
+        wrap unconditionally. This mirrors Oracle's ``:"name"`` approach
+        to the same grammar constraint and eliminates the collision risk
+        that any single-character escape map would carry (e.g. ``col-name``
+        vs ``col_name`` both mapping to ``:col_name``).
 
-        For bare identifiers (the common case), we fall through to the
-        default implementation so INSERT/SELECT output stays unchanged.
+        The backticks are SQL-side *quoting* only: the parameter's
+        logical name is still the text between them, so the params dict
+        sent to the driver keeps the original unquoted key. We therefore
+        leave ``escaped_bind_names`` untouched — ``construct_params``
+        passes keys through unchanged.
+
+        Gated by ``DatabricksDialect.quote_bind_params``. Set
+        ``?quote_bind_params=false`` on the SQLAlchemy URL to fall back
+        to stock bind-name rendering.
         """
         if (
-            not kw.get("escaped_from")
-            and not kw.get("post_compile", False)
-            and not self._bindname_is_bare_identifier.match(name)
+            kw.get("post_compile", False)
+            or kw.get("escaped_from")
+            or not getattr(self.dialect, "quote_bind_params", True)
         ):
-            accumulate = kw.get("accumulate_bind_names")
-            if accumulate is not None:
-                accumulate.add(name)
-            visited = kw.get("visited_bindparam")
-            if visited is not None:
-                visited.append(name)
-            quoted = f"`{name}`"
-            if self.state is compiler.CompilerState.COMPILING:
-                return self.compilation_bindtemplate % {"name": quoted}
-            return self.bindtemplate % {"name": quoted}
-        return super().bindparam_string(name, **kw)
+            return super().bindparam_string(name, **kw)
+
+        accumulate = kw.get("accumulate_bind_names")
+        if accumulate is not None:
+            accumulate.add(name)
+        visited = kw.get("visited_bindparam")
+        if visited is not None:
+            visited.append(name)
+        quoted = f"`{name}`"
+        if self.state is compiler.CompilerState.COMPILING:
+            return self.compilation_bindtemplate % {"name": quoted}
+        return self.bindtemplate % {"name": quoted}
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,

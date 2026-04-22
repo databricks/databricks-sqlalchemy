@@ -117,18 +117,24 @@ class TestTableComplexTypeDDL(DDLTestBase):
 
 
 class TestBindParamQuoting(DDLTestBase):
-    """Regression tests for column names that contain characters which are not
-    legal inside a bare Databricks named-parameter marker (`:name`). Without
-    the custom ``bindparam_string`` override, a column like
-    ``col-with-hyphen`` produces SQL like ``VALUES (:col-with-hyphen)`` which
-    fails with UNBOUND_SQL_PARAMETER on the server. The fix wraps such names
-    in backticks (``VALUES (:`col-with-hyphen`)``), which the Databricks SQL
-    grammar accepts as a quoted parameter identifier.
+    """Regression tests for bind-parameter quoting.
+
+    Databricks named parameter markers (``:name``) must be bare identifiers
+    (``[A-Za-z_][A-Za-z0-9_]*``) unless wrapped in backticks. Because
+    DataFrame-origin column names frequently contain hyphens (a character
+    that's legal inside a backtick-quoted column identifier but not in a
+    bare bind marker), the dialect wraps every bind name in backticks
+    unconditionally. The backticks are SQL-side quoting only — the params
+    dict sent to the driver keeps the original unquoted key.
+
+    The behavior is gated by ``DatabricksDialect.quote_bind_params`` which
+    defaults to True; set ``?quote_bind_params=false`` in the URL to
+    disable.
     """
 
-    def _compile_insert(self, table, values):
+    def _compile_insert(self, table, values, engine=None):
         stmt = insert(table).values(values)
-        return stmt.compile(bind=self.engine)
+        return stmt.compile(bind=engine or self.engine)
 
     def test_hyphenated_column_renders_backticked_bind_marker(self):
         metadata = MetaData()
@@ -143,18 +149,18 @@ class TestBindParamQuoting(DDLTestBase):
         )
 
         sql = str(compiled)
-        # Hyphenated name is wrapped in backticks at the marker site
+        # Both names are backticked at the marker site
         assert ":`col-with-hyphen`" in sql
-        # Plain name is untouched
-        assert ":normal_col" in sql
+        assert ":`normal_col`" in sql
         # The params dict sent to the driver keeps the ORIGINAL unquoted key
         # — this matches what the Databricks server expects (verified
-        # empirically: a backticked marker `:`name`` binds against a plain
-        # `name` key in the params dict).
+        # empirically: a backticked marker ``:`name``` binds against a plain
+        # ``name`` key in the params dict).
         params = compiled.construct_params()
         assert params["col-with-hyphen"] == "x"
         assert params["normal_col"] == "y"
         assert "`col-with-hyphen`" not in params
+        assert "`normal_col`" not in params
 
     def test_hyphen_and_underscore_columns_do_not_collide(self):
         """A table containing both ``col-name`` and ``col_name`` must produce
@@ -174,14 +180,17 @@ class TestBindParamQuoting(DDLTestBase):
 
         sql = str(compiled)
         assert ":`col-name`" in sql
-        assert ":col_name" in sql
+        assert ":`col_name`" in sql
 
         params = compiled.construct_params()
         assert params["col-name"] == "hyphen_value"
         assert params["col_name"] == "underscore_value"
 
-    def test_plain_identifier_bind_names_are_unchanged(self):
-        """No regression: ordinary column names must not be backticked."""
+    def test_plain_identifier_bind_names_are_also_backticked(self):
+        """Every bind name is wrapped unconditionally — the Databricks SQL
+        grammar accepts ``:`id``` identically to ``:id`` for plain names
+        (verified against a live warehouse).
+        """
         metadata = MetaData()
         table = Table(
             "t",
@@ -191,15 +200,10 @@ class TestBindParamQuoting(DDLTestBase):
         )
         compiled = self._compile_insert(table, {"id": "1", "name": "n"})
         sql = str(compiled)
-        assert ":id" in sql
-        assert ":name" in sql
-        assert ":`id`" not in sql
-        assert ":`name`" not in sql
+        assert ":`id`" in sql
+        assert ":`name`" in sql
 
-    def test_space_and_dot_in_column_name_also_backticked(self):
-        """The bare-identifier check covers all non-[A-Za-z0-9_] characters,
-        not just hyphens — spaces, dots, etc. should also be wrapped.
-        """
+    def test_space_and_dot_in_column_name_are_backticked(self):
         metadata = MetaData()
         table = Table(
             "t",
@@ -218,13 +222,42 @@ class TestBindParamQuoting(DDLTestBase):
         assert params["col with space"] == "s"
         assert params["col.with.dot"] == "d"
 
-    def test_leading_digit_column_is_backticked(self):
-        """Databricks bind names cannot start with a digit either."""
-        metadata = MetaData()
-        table = Table("t", metadata, Column("1col", String()))
-        compiled = self._compile_insert(table, {"1col": "x"})
-        sql = str(compiled)
-        assert ":`1col`" in sql
+    def test_quote_bind_params_can_be_disabled(self):
+        """Setting ``quote_bind_params=False`` on the dialect reverts to
+        stock SQLAlchemy bind-name rendering (the pre-fix behavior).
+        """
+        from databricks.sqlalchemy.base import DatabricksDialect
 
-        params = compiled.construct_params()
-        assert params["1col"] == "x"
+        dialect = DatabricksDialect()
+        dialect.paramstyle = "named"
+        dialect.quote_bind_params = False
+
+        metadata = MetaData()
+        table = Table("t", metadata, Column("id", String()))
+        compiled = insert(table).values({"id": "1"}).compile(dialect=dialect)
+        sql = str(compiled)
+        assert ":id" in sql
+        assert ":`id`" not in sql
+
+    def test_url_query_string_disables_quoting(self):
+        """The URL query parameter ``?quote_bind_params=false`` turns the
+        flag off on the dialect.
+        """
+        from sqlalchemy import create_engine
+
+        engine = create_engine(
+            "databricks://token:****@****?http_path=****&catalog=****"
+            "&schema=****&quote_bind_params=false"
+        )
+        # create_engine lazy-initializes; force the dialect to process the URL
+        engine.dialect.create_connect_args(engine.url)
+        assert engine.dialect.quote_bind_params is False
+
+    def test_url_query_string_defaults_to_quoting(self):
+        from sqlalchemy import create_engine
+
+        engine = create_engine(
+            "databricks://token:****@****?http_path=****&catalog=****&schema=****"
+        )
+        engine.dialect.create_connect_args(engine.url)
+        assert engine.dialect.quote_bind_params is True
