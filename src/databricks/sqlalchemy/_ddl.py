@@ -120,6 +120,18 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
     bindtemplate = property(lambda self: self._BIND_TEMPLATE, lambda self, _: None)
     compilation_bindtemplate = property(lambda self: self._BIND_TEMPLATE, lambda self, _: None)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # One-line trace of what we rendered — helps debug reported SQL
+        # issues without adding per-bindparam noise.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "DatabricksStatementCompiler compiled statement with "
+                "backtick-quoted bind markers (template=%s): %s",
+                self._BIND_TEMPLATE,
+                self.string,
+            )
+
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
         since Databricks SQL doesn't support the latter.
