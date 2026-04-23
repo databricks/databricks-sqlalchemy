@@ -116,9 +116,16 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
 
     # The no-op setter makes ``SQLCompiler.__init__``'s assignment of the
     # default template a silent no-op so our class-level value is what
-    # every render path reads.
-    bindtemplate = property(lambda self: self._BIND_TEMPLATE, lambda self, _: None)
-    compilation_bindtemplate = property(lambda self: self._BIND_TEMPLATE, lambda self, _: None)
+    # every render path reads. ``# type: ignore[assignment]`` is required
+    # because super declares these as ``str``, and a ``property`` is a
+    # different type at the static-analysis level (runtime behavior is
+    # unchanged — the descriptor returns ``str`` on access).
+    bindtemplate = property(  # type: ignore[assignment]
+        lambda self: self._BIND_TEMPLATE, lambda self, _: None
+    )
+    compilation_bindtemplate = property(  # type: ignore[assignment]
+        lambda self: self._BIND_TEMPLATE, lambda self, _: None
+    )
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
