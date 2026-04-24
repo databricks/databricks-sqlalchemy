@@ -11,7 +11,12 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
     legal_characters = re.compile(r"^[A-Z0-9_]+$", re.I)
 
     def __init__(self, dialect):
-        super().__init__(dialect, initial_quote="`")
+        # ``escape_quote`` must match ``initial_quote`` so a literal
+        # backtick inside a quoted identifier is doubled (``a``b`` —
+        # per the ``BACKQUOTED_IDENTIFIER`` lexer rule in Spark SQL).
+        # The default from SQLAlchemy is ``"`` which would escape the
+        # wrong character, producing invalid DDL like ``a`b``.
+        super().__init__(dialect, initial_quote="`", escape_quote="`")
 
 
 class DatabricksDDLCompiler(compiler.DDLCompiler):
@@ -126,6 +131,23 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
     compilation_bindtemplate = property(  # type: ignore[assignment]
         lambda self: self._BIND_TEMPLATE, lambda self, _: None
     )
+
+    def bindparam_string(self, name, **kw):
+        # The template ``:`%(name)s``` assumes ``name`` is safe inside
+        # backticks — any literal backtick must be doubled per the
+        # ``BACKQUOTED_IDENTIFIER`` lexer rule. The doubling affects only
+        # the rendered SQL; the params dict key sent to the driver stays
+        # the single-backtick original (the server collapses ``  ->  `
+        # when it parses the marker name), so we must not set
+        # ``escaped_from`` — leaving ``escaped_bind_names`` empty keeps
+        # the key translation in ``construct_params`` a no-op.
+        if (
+            "`" in name
+            and not kw.get("escaped_from")
+            and not kw.get("post_compile", False)
+        ):
+            name = name.replace("`", "``")
+        return super().bindparam_string(name, **kw)
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,

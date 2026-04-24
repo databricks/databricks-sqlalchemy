@@ -211,6 +211,27 @@ class TestBindParamQuoting(DDLTestBase):
         compiled = self._compile_insert(table, {"1col": "x"})
         assert ":`1col`" in str(compiled)
 
+    def test_literal_backtick_in_column_name_is_doubled(self):
+        """A literal backtick inside a column name must be doubled in the
+        rendered SQL (both the DDL column identifier and the bind
+        marker), per the Spark SQL ``BACKQUOTED_IDENTIFIER`` lexer rule.
+        The params dict key stays the single-backtick original — the
+        server un-doubles when it parses the marker name.
+        """
+        from sqlalchemy.schema import CreateTable
+
+        metadata = MetaData()
+        table = Table("t", metadata, Column("a`b", String()))
+
+        create_sql = str(CreateTable(table).compile(bind=self.engine))
+        assert "`a``b`" in create_sql  # DDL identifier doubled
+
+        compiled = self._compile_insert(table, {"a`b": "x"})
+        assert ":`a``b`" in str(compiled)  # bind marker doubled
+        params = compiled.construct_params()
+        assert params["a`b"] == "x"  # dict key stays single-backtick
+        assert "a``b" not in params
+
     def test_many_special_characters_in_column_names(self):
         """Column names containing characters that Delta allows (hyphens,
         slashes, question marks, hash, plus, star, at, dollar, amp, pipe,
