@@ -138,15 +138,31 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
         # ``BACKQUOTED_IDENTIFIER`` lexer rule. The doubling affects only
         # the rendered SQL; the params dict key sent to the driver stays
         # the single-backtick original (the server collapses ``  ->  `
-        # when it parses the marker name), so we must not set
-        # ``escaped_from`` — leaving ``escaped_bind_names`` empty keeps
-        # the key translation in ``construct_params`` a no-op.
+        # when it parses the marker name).
+        #
+        # When a backtick is present, render the marker ourselves rather
+        # than delegating to super. Super would otherwise also apply
+        # ``bindname_escape_characters`` translation (``.``->``_``,
+        # ``[``->``_``, etc.) AND set ``escaped_from``, which together
+        # would propagate into ``escaped_bind_names`` and rewrite the
+        # params-dict key. The original dict key uses a single backtick
+        # and the un-translated form, so the rewrite would create a
+        # mismatch with what the server expects when it parses the
+        # backtick-quoted marker name. By owning the rendering here we
+        # keep ``escaped_bind_names`` empty for these names and the dict
+        # key passes through unchanged.
         if (
             "`" in name
             and not kw.get("escaped_from")
             and not kw.get("post_compile", False)
         ):
-            name = name.replace("`", "``")
+            accumulate = kw.get("accumulate_bind_names")
+            if accumulate is not None:
+                accumulate.add(name)
+            visited = kw.get("visited_bindparam")
+            if visited is not None:
+                visited.append(name)
+            return self._BIND_TEMPLATE % {"name": name.replace("`", "``")}
         return super().bindparam_string(name, **kw)
 
     def limit_clause(self, select, **kw):

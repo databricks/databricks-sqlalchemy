@@ -211,6 +211,25 @@ class TestBindParamQuoting(DDLTestBase):
         compiled = self._compile_insert(table, {"1col": "x"})
         assert ":`1col`" in str(compiled)
 
+    def test_backtick_combined_with_default_escape_chars(self):
+        """Column name with BOTH a literal backtick AND a character in
+        SQLAlchemy's default ``bindname_escape_characters`` (``.``,
+        ``[``, ``:``, ``%``, ...). The backtick path bypasses super's
+        translation entirely so both characters render verbatim inside
+        the backtick-quoted marker, and the params dict key stays the
+        single-backtick, un-translated original.
+        """
+        metadata = MetaData()
+        table = Table("t", metadata, Column("col`x.y", String()))
+        compiled = self._compile_insert(table, {"col`x.y": "v"})
+        sql = str(compiled)
+        # Backtick doubled, dot preserved
+        assert ":`col``x.y`" in sql
+        params = compiled.construct_params()
+        assert params["col`x.y"] == "v"
+        # No mapping side effects
+        assert compiled.escaped_bind_names == {}
+
     def test_literal_backtick_in_column_name_is_doubled(self):
         """A literal backtick inside a column name must be doubled in the
         rendered SQL (both the DDL column identifier and the bind
