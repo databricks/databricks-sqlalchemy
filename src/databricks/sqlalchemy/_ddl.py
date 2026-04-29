@@ -11,7 +11,12 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
     legal_characters = re.compile(r"^[A-Z0-9_]+$", re.I)
 
     def __init__(self, dialect):
-        super().__init__(dialect, initial_quote="`")
+        # ``escape_quote`` must match ``initial_quote`` so a literal
+        # backtick inside a quoted identifier is doubled (``a``b`` —
+        # per the ``BACKQUOTED_IDENTIFIER`` lexer rule in Spark SQL).
+        # The default from SQLAlchemy is ``"`` which would escape the
+        # wrong character, producing invalid DDL like ``a`b``.
+        super().__init__(dialect, initial_quote="`", escape_quote="`")
 
 
 class DatabricksDDLCompiler(compiler.DDLCompiler):
@@ -84,6 +89,82 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
 
 
 class DatabricksStatementCompiler(compiler.SQLCompiler):
+    """Compiler that wraps every bind parameter marker in backticks.
+
+    Databricks named parameter markers only accept bare identifiers
+    (``[A-Za-z_][A-Za-z0-9_]*``) unless backtick-quoted. DataFrame-origin
+    column names frequently contain hyphens (``col-with-hyphen``), which
+    SQLAlchemy would otherwise render as an invalid marker
+    ``:col-with-hyphen`` — the parser splits on ``-`` and reports
+    UNBOUND_SQL_PARAMETER.
+
+    Wrapping every marker in backticks (``:`col-with-hyphen```) is valid
+    for any identifier the Spark SQL grammar accepts, so we wrap
+    unconditionally. The backticks are SQL-side quoting only — the
+    parameter's logical name is the text between them, so the params
+    dict sent to the driver keeps the original unquoted key.
+
+    Implementation: fix ``bindtemplate`` and ``compilation_bindtemplate``
+    on the class. Every bind-render path in SQLAlchemy reads one of
+    these two attributes (``bindparam_string``,
+    ``_literal_execute_expanding_parameter``, and the insertmanyvalues
+    path which this dialect doesn't enable), so fixing them at the
+    attribute level covers all paths with no method overrides. We use
+    property descriptors with no-op setters because ``SQLCompiler.__init__``
+    assigns the default templates from ``BIND_TEMPLATES[paramstyle]``
+    during its own init — a plain class attribute would be shadowed by
+    that instance assignment. The no-op setter silently discards super's
+    assignment so our class-level value is always what gets read.
+    """
+
+    _BIND_TEMPLATE = ":`%(name)s`"
+
+    # The no-op setter makes ``SQLCompiler.__init__``'s assignment of the
+    # default template a silent no-op so our class-level value is what
+    # every render path reads. ``# type: ignore[assignment]`` is required
+    # because super declares these as ``str``, and a ``property`` is a
+    # different type at the static-analysis level (runtime behavior is
+    # unchanged — the descriptor returns ``str`` on access).
+    bindtemplate = property(  # type: ignore[assignment]
+        lambda self: self._BIND_TEMPLATE, lambda self, _: None
+    )
+    compilation_bindtemplate = property(  # type: ignore[assignment]
+        lambda self: self._BIND_TEMPLATE, lambda self, _: None
+    )
+
+    def bindparam_string(self, name, **kw):
+        # The template ``:`%(name)s``` assumes ``name`` is safe inside
+        # backticks — any literal backtick must be doubled per the
+        # ``BACKQUOTED_IDENTIFIER`` lexer rule. The doubling affects only
+        # the rendered SQL; the params dict key sent to the driver stays
+        # the single-backtick original (the server collapses ``  ->  `
+        # when it parses the marker name).
+        #
+        # When a backtick is present, render the marker ourselves rather
+        # than delegating to super. Super would otherwise also apply
+        # ``bindname_escape_characters`` translation (``.``->``_``,
+        # ``[``->``_``, etc.) AND set ``escaped_from``, which together
+        # would propagate into ``escaped_bind_names`` and rewrite the
+        # params-dict key. The original dict key uses a single backtick
+        # and the un-translated form, so the rewrite would create a
+        # mismatch with what the server expects when it parses the
+        # backtick-quoted marker name. By owning the rendering here we
+        # keep ``escaped_bind_names`` empty for these names and the dict
+        # key passes through unchanged.
+        if (
+            "`" in name
+            and not kw.get("escaped_from")
+            and not kw.get("post_compile", False)
+        ):
+            accumulate = kw.get("accumulate_bind_names")
+            if accumulate is not None:
+                accumulate.add(name)
+            visited = kw.get("visited_bindparam")
+            if visited is not None:
+                visited.append(name)
+            return self._BIND_TEMPLATE % {"name": name.replace("`", "``")}
+        return super().bindparam_string(name, **kw)
+
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
         since Databricks SQL doesn't support the latter.
