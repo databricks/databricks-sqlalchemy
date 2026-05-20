@@ -70,6 +70,7 @@ class DatabricksDialect(default.DefaultDialect):
         sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
         sqlalchemy.types.String: dialect_type_impl.DatabricksStringType,
+        sqlalchemy.types.Uuid: dialect_type_impl.DatabricksUUID,
     }
 
     # SQLAlchemy requires that a table with no primary key

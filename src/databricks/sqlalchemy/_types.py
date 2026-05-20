@@ -1,6 +1,7 @@
 from datetime import datetime, time, timezone
 from itertools import product
 from typing import Any, Union, Optional
+from uuid import UUID
 
 import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
@@ -311,6 +312,60 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
                 _step2 = _step1
 
             return "%s" % _step2
+
+        return process
+
+
+class DatabricksUUID(sqlalchemy.types.Uuid):
+    """Bind UUIDs in their canonical 8-4-4-4-12 hyphenated form.
+
+    Databricks has no native UUID type, so SQLAlchemy's default ``Uuid``
+    bind/literal processors render the 32-character hex form without dashes
+    (e.g. ``1daa91d78d35468486d63fa89042c1f4``). That breaks equality against
+    UUIDs stored as canonical strings in Databricks. We coerce every input
+    through ``uuid.UUID`` so the wire value is always the canonical hyphenated
+    form regardless of whether the caller passed a ``UUID``, a hyphenated
+    string, or a dash-less hex string. The ``UUID(...)`` round-trip also
+    validates the input — any non-UUID string raises ``ValueError`` instead of
+    being silently injected into SQL, which is critical for ``literal_binds``
+    rendering safety.
+
+    With the default ``as_uuid=True``, the inherited ``result_processor``
+    parses both hyphenated and dash-less hex forms back into a ``UUID``
+    object, so reads of legacy hex-stored rows continue to work. With
+    ``as_uuid=False`` the result is returned as the raw column string —
+    callers who mix legacy hex-stored rows with the canonical form should
+    normalize on read themselves.
+    """
+
+    cache_ok = True
+
+    @staticmethod
+    def _canonical(value):
+        """Return the canonical hyphenated string for ``value``.
+
+        For UUID instances we rebuild a stdlib ``UUID`` from ``.int`` so a
+        subclass cannot smuggle an arbitrary string through an overridden
+        ``__str__`` — the canonical hyphenated form of ``value.int`` goes to
+        the wire, so no attacker-controlled string can escape the quotes.
+        """
+        if isinstance(value, UUID):
+            return str(UUID(int=value.int))
+        return str(UUID(str(value)))
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return None
+            return self._canonical(value)
+
+        return process
+
+    def literal_processor(self, dialect):
+        def process(value):
+            if value is None:
+                return "NULL"
+            return "'%s'" % self._canonical(value)
 
         return process
 
