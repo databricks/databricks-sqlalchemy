@@ -1,5 +1,9 @@
 # Release History
 
+# 2.0.10 (unreleased)
+
+- Fix: Use public `user_agent_entry` connect parameter instead of deprecated `_user_agent_entry` to silence the deprecation warning from `databricks-sql-connector >= 4.0.1` (databricks/databricks-sqlalchemy#36)
+
 # 2.0.9 (2026-02-20)
 
 - Feature: Added `pool_pre_ping` support via `do_ping()` override to detect and recycle dead connections (databricks/databricks-sqlalchemy#54 by @msrathore-db)
