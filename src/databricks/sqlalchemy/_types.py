@@ -88,6 +88,31 @@ def compile_numeric_databricks(type_, compiler, **kw):
     return compiler.visit_DECIMAL(type_, **kw)
 
 
+@compiles(sqlalchemy.types.Float, "databricks")
+def compile_float_databricks(type_, compiler, **kw):
+    """Promote ``Float(precision > 24)`` to ``DOUBLE`` (64-bit) on Databricks.
+
+    Databricks ``FLOAT`` is 32-bit (~7 significant digits) and ``DOUBLE`` is
+    64-bit (~15-17 significant digits). SQLAlchemy's default ``visit_float``
+    drops the precision argument entirely for Databricks (no ``FLOAT(p)`` form
+    exists), so ``Float(precision=53)`` silently compiles to a 32-bit ``FLOAT``
+    column. ``pandas.DataFrame.to_sql`` maps ``float64`` to ``Float(precision=53)``,
+    which means every ``to_sql`` round-trip of a ``float64`` column was being
+    permanently truncated at the ``CREATE TABLE`` step — there is no way to
+    recover the lost bits later, even after the INSERT path was fixed in
+    databricks-sql-python v4.2.6.
+
+    The 24-bit threshold matches the SQL standard convention: ``FLOAT(p)`` with
+    ``p <= 24`` is single precision (IEEE 754 binary32's 24-bit significand),
+    ``p > 24`` is double precision. ``Float()`` with no precision keeps the
+    current ``FLOAT`` behavior — only callers who explicitly asked for >24-bit
+    precision get the promotion.
+    """
+    if getattr(type_, "precision", None) is not None and type_.precision > 24:
+        return "DOUBLE"
+    return "FLOAT"
+
+
 @compiles(sqlalchemy.types.DateTime, "databricks")
 def compile_datetime_databricks(type_, compiler, **kw):
     """

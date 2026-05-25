@@ -171,6 +171,66 @@ class TestUppercaseTypesCompilation(CompilationTestBase):
         )
 
 
+class TestFloatPrecisionPromotion(CompilationTestBase):
+    """Regression coverage for the pandas ``to_sql`` ``float64`` precision loss.
+
+    Databricks ``FLOAT`` is 32-bit; ``DOUBLE`` is 64-bit. SQLAlchemy's default
+    ``visit_float`` drops the precision argument when rendering for Databricks,
+    so ``Float(precision=53)`` (what ``pandas.DataFrame.to_sql`` emits for
+    ``float64`` columns) was silently truncating to a 32-bit ``FLOAT`` column.
+
+    The fix is to promote ``Float`` to ``DOUBLE`` when ``precision > 24``,
+    matching the SQL standard cutover from single to double precision.
+    """
+
+    def test_float_with_no_precision_remains_float(self):
+        self._assert_compiled_value_explicit(sqlalchemy.types.Float(), "FLOAT")
+
+    def test_float_at_single_precision_boundary_remains_float(self):
+        """``precision=24`` is the upper bound of IEEE 754 single precision."""
+        self._assert_compiled_value_explicit(
+            sqlalchemy.types.Float(precision=24), "FLOAT"
+        )
+
+    def test_float_above_single_precision_boundary_promotes_to_double(self):
+        self._assert_compiled_value_explicit(
+            sqlalchemy.types.Float(precision=25), "DOUBLE"
+        )
+
+    def test_float_precision_53_promotes_to_double(self):
+        """``pandas.DataFrame.to_sql`` maps ``float64`` to ``Float(precision=53)``."""
+        self._assert_compiled_value_explicit(
+            sqlalchemy.types.Float(precision=53), "DOUBLE"
+        )
+
+    def test_uppercase_float_with_high_precision_stays_float(self):
+        """``sqlalchemy.types.FLOAT`` is the backend-specific 32-bit type — a
+        caller who reaches for the uppercase form is explicitly asking for
+        ``FLOAT``, so the precision argument should not promote it to DOUBLE.
+        """
+        self._assert_compiled_value_explicit(
+            sqlalchemy.types.FLOAT(precision=53), "FLOAT"
+        )
+
+    def test_double_is_unaffected_by_float_compiler(self):
+        """The ``@compiles(Float)`` dispatch is keyed on ``__visit_name__`` —
+        ``Double`` has its own (``'double'``) so it must not be affected."""
+        self._assert_compiled_value_explicit(sqlalchemy.types.Double(), "DOUBLE")
+        self._assert_compiled_value_explicit(
+            sqlalchemy.types.Double(precision=53), "DOUBLE"
+        )
+
+    def test_create_table_with_float64_emits_double_column(self):
+        """End-to-end: what pandas ``to_sql`` of a ``float64`` column produces."""
+        from sqlalchemy.schema import CreateTable
+
+        meta = MetaData()
+        t = Table("df", meta, Column("value", sqlalchemy.types.Float(precision=53)))
+        ddl = str(CreateTable(t).compile(dialect=self.dialect))
+        assert "value DOUBLE" in ddl
+        assert "value FLOAT" not in ddl
+
+
 class TestDatabricksUUID:
     """Regression coverage for github.com/databricks/databricks-sqlalchemy/issues/50.
 
