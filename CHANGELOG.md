@@ -1,5 +1,13 @@
 # Release History
 
+# 2.0.10 (2026-05-26)
+
+- Fix: Quote bind parameter names with backticks so column names containing characters outside `[A-Za-z0-9_]`, including hyphens, bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)
+- Fix: Bind UUID values in canonical hyphenated form for `Column(Uuid)` and UUID comparisons (databricks/databricks-sqlalchemy#63 by @sreekanth-db)
+- Maintenance: Harden GitHub Actions workflows by pinning actions to SHAs, restricting sensitive triggers, and scoping token permissions (databricks/databricks-sqlalchemy#56 by @jprakash-db)
+- Maintenance: Remove GitHub Actions PyPI publish workflows; publish this release through the current maintainer release process (databricks/databricks-sqlalchemy#57 by @jprakash-db)
+- Maintenance: Move CI to Databricks protected runners with JFrog OIDC and shared Poetry/JFrog setup (databricks/databricks-sqlalchemy#59 by @vikrantpuppala)
+
 # 2.0.9 (2026-02-20)
 
 - Feature: Added `pool_pre_ping` support via `do_ping()` override to detect and recycle dead connections (databricks/databricks-sqlalchemy#54 by @msrathore-db)
