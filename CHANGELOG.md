@@ -1,5 +1,10 @@
 # Release History
 
+# 2.0.10 (2026-05-26)
+
+- Fix: Quote bind parameter names with backticks so column names containing characters outside `[A-Za-z0-9_]`, including hyphens, bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)
+- Fix: Bind UUID values in canonical hyphenated form for `Column(Uuid)` and UUID comparisons (databricks/databricks-sqlalchemy#63 by @sreekanth-db)
+
 # 2.0.9 (2026-02-20)
 
 - Feature: Added `pool_pre_ping` support via `do_ping()` override to detect and recycle dead connections (databricks/databricks-sqlalchemy#54 by @msrathore-db)
