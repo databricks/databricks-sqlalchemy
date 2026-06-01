@@ -11,7 +11,13 @@ from sqlalchemy import (
     DateTime,
 )
 from collections.abc import Sequence
-from databricks.sqlalchemy import TIMESTAMP, TINYINT, DatabricksArray, DatabricksMap, DatabricksVariant
+from databricks.sqlalchemy import (
+    TIMESTAMP,
+    TINYINT,
+    DatabricksArray,
+    DatabricksMap,
+    DatabricksVariant,
+)
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy import select
 from datetime import date, datetime, time, timedelta, timezone
@@ -19,6 +25,7 @@ import pandas as pd
 import numpy as np
 import decimal
 import json
+
 
 class TestComplexTypes(TestSetup):
     def _parse_to_common_type(self, value):
@@ -175,8 +182,8 @@ class TestComplexTypes(TestSetup):
                 "number": 123,
                 "boolean": True,
                 "array": [1, 2, 3],
-                "object": {"nested": "value"}
-            }
+                "object": {"nested": "value"},
+            },
         }
 
         return VariantTable, sample_data
@@ -239,6 +246,44 @@ class TestComplexTypes(TestSetup):
             df_result = pd.read_sql(stmt, engine)
             assert self._recursive_compare(df_result.iloc[0].to_dict(), sample_data)
 
+    def test_array_table_creation_pandas_multi(self):
+        table, sample_data = self.sample_array_table()
+
+        with self.table_context(table) as engine:
+            df = pd.DataFrame([sample_data, sample_data | {"int_col": 2}])
+            df.to_sql(
+                table.__tablename__,
+                engine,
+                if_exists="append",
+                index=False,
+                method="multi",
+            )
+
+            stmt = select(table).order_by(table.int_col)
+            df_result = pd.read_sql(stmt, engine)
+            assert self._recursive_compare(df_result.iloc[0].to_dict(), sample_data)
+            expected_second = sample_data | {"int_col": 2}
+            assert self._recursive_compare(df_result.iloc[1].to_dict(), expected_second)
+
+    def test_map_table_creation_pandas_multi(self):
+        table, sample_data = self.sample_map_table()
+
+        with self.table_context(table) as engine:
+            df = pd.DataFrame([sample_data, sample_data | {"int_col": 2}])
+            df.to_sql(
+                table.__tablename__,
+                engine,
+                if_exists="append",
+                index=False,
+                method="multi",
+            )
+
+            stmt = select(table).order_by(table.int_col)
+            df_result = pd.read_sql(stmt, engine)
+            assert self._recursive_compare(df_result.iloc[0].to_dict(), sample_data)
+            expected_second = sample_data | {"int_col": 2}
+            assert self._recursive_compare(df_result.iloc[1].to_dict(), expected_second)
+
     def test_insert_variant_table_sqlalchemy(self):
         table, sample_data = self.sample_variant_table()
 
@@ -253,7 +298,12 @@ class TestComplexTypes(TestSetup):
             result = session.scalar(stmt)
             compare = {key: getattr(result, key) for key in sample_data.keys()}
             # Parse JSON values back to original format for comparison
-            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
+            for key in [
+                "variant_simple_col",
+                "variant_nested_col",
+                "variant_array_col",
+                "variant_mixed_col",
+            ]:
                 if compare[key] is not None:
                     compare[key] = json.loads(compare[key])
 
@@ -263,25 +313,75 @@ class TestComplexTypes(TestSetup):
         table, sample_data = self.sample_variant_table()
 
         with self.table_context(table) as engine:
-            
+
             df = pd.DataFrame([sample_data])
             dtype_mapping = {
                 "variant_simple_col": DatabricksVariant,
                 "variant_nested_col": DatabricksVariant,
                 "variant_array_col": DatabricksVariant,
-                "variant_mixed_col": DatabricksVariant
+                "variant_mixed_col": DatabricksVariant,
             }
-            df.to_sql(table.__tablename__, engine, if_exists="append", index=False, dtype=dtype_mapping)
-            
+            df.to_sql(
+                table.__tablename__,
+                engine,
+                if_exists="append",
+                index=False,
+                dtype=dtype_mapping,
+            )
+
             stmt = select(table)
             df_result = pd.read_sql(stmt, engine)
             result_dict = df_result.iloc[0].to_dict()
             # Parse JSON values back to original format for comparison
-            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
+            for key in [
+                "variant_simple_col",
+                "variant_nested_col",
+                "variant_array_col",
+                "variant_mixed_col",
+            ]:
                 if result_dict[key] is not None:
                     result_dict[key] = json.loads(result_dict[key])
 
             assert result_dict == sample_data
+
+    def test_variant_table_creation_pandas_multi(self):
+        table, sample_data = self.sample_variant_table()
+
+        with self.table_context(table) as engine:
+            second = sample_data | {"int_col": 2}
+            df = pd.DataFrame([sample_data, second])
+            dtype_mapping = {
+                "variant_simple_col": DatabricksVariant,
+                "variant_nested_col": DatabricksVariant,
+                "variant_array_col": DatabricksVariant,
+                "variant_mixed_col": DatabricksVariant,
+            }
+            df.to_sql(
+                table.__tablename__,
+                engine,
+                if_exists="append",
+                index=False,
+                dtype=dtype_mapping,
+                method="multi",
+            )
+
+            stmt = select(table).order_by(table.int_col)
+            df_result = pd.read_sql(stmt, engine)
+            first_row = df_result.iloc[0].to_dict()
+            second_row = df_result.iloc[1].to_dict()
+            for key in [
+                "variant_simple_col",
+                "variant_nested_col",
+                "variant_array_col",
+                "variant_mixed_col",
+            ]:
+                if first_row[key] is not None:
+                    first_row[key] = json.loads(first_row[key])
+                if second_row[key] is not None:
+                    second_row[key] = json.loads(second_row[key])
+
+            assert first_row == sample_data
+            assert second_row == second
 
     def test_variant_literal_processor(self):
         table, sample_data = self.sample_variant_table()
@@ -291,8 +391,7 @@ class TestComplexTypes(TestSetup):
 
             try:
                 compiled = stmt.compile(
-                    dialect=engine.dialect,
-                    compile_kwargs={"literal_binds": True}
+                    dialect=engine.dialect, compile_kwargs={"literal_binds": True}
                 )
                 sql_str = str(compiled)
 
@@ -311,7 +410,12 @@ class TestComplexTypes(TestSetup):
             compare = {key: getattr(result, key) for key in sample_data.keys()}
 
             # Parse JSON values back to original Python objects
-            for key in ['variant_simple_col', 'variant_nested_col', 'variant_array_col', 'variant_mixed_col']:
+            for key in [
+                "variant_simple_col",
+                "variant_nested_col",
+                "variant_array_col",
+                "variant_mixed_col",
+            ]:
                 if compare[key] is not None:
                     compare[key] = json.loads(compare[key])
 

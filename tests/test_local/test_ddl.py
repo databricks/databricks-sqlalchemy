@@ -1,5 +1,14 @@
 import pytest
-from sqlalchemy import Column, MetaData, String, Table, Numeric, Integer, create_engine, insert
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    Numeric,
+    Integer,
+    create_engine,
+    insert,
+)
 from sqlalchemy.schema import (
     CreateTable,
     DropColumnComment,
@@ -203,7 +212,6 @@ class TestBindParamQuoting(DDLTestBase):
         assert ":`id`" in sql
         assert ":`name`" in sql
 
-
     def test_leading_digit_column_is_backticked(self):
         """Databricks bind names cannot start with a digit bare."""
         metadata = MetaData()
@@ -345,7 +353,9 @@ class TestBindParamQuoting(DDLTestBase):
     def test_sql_reserved_word_as_column_name(self):
         """Reserved words used as column names must work as bind params too."""
         metadata = MetaData()
-        table = Table("t", metadata, Column("select", String()), Column("from", String()))
+        table = Table(
+            "t", metadata, Column("select", String()), Column("from", String())
+        )
         compiled = self._compile_insert(table, {"select": "s", "from": "f"})
         sql = str(compiled)
         assert ":`select`" in sql
@@ -419,9 +429,59 @@ class TestBindParamQuoting(DDLTestBase):
 
         # (2) construct_expanded_state at execute time
         compiled = stmt.compile(bind=self.engine)
-        expanded = compiled.construct_expanded_state(
-            {"col-name_1": ["a", "b", "c"]}
-        )
+        expanded = compiled.construct_expanded_state({"col-name_1": ["a", "b", "c"]})
         assert ":`col-name_1_1`" in expanded.statement
         assert ":`col-name_1_2`" in expanded.statement
         assert ":`col-name_1_3`" in expanded.statement
+
+
+class TestMultiRowInsertCasts(DDLTestBase):
+    def test_multi_values_casts_mixed_type_column(self):
+        metadata = MetaData()
+        table = Table(
+            "t", metadata, Column("name", String()), Column("value", String())
+        )
+        stmt = insert(table).values(
+            [
+                {"name": "alice", "value": 1},
+                {"name": "bob", "value": 0},
+                {"name": None, "value": "NE"},
+            ]
+        )
+
+        sql = str(stmt.compile(bind=self.engine))
+
+        assert "CAST(:`value_m0` AS STRING)" in sql
+        assert "CAST(:`value_m1` AS STRING)" in sql
+        assert "CAST(:`value_m2` AS STRING)" in sql
+        assert "CAST(:`name_m0` AS STRING)" not in sql
+        assert "CAST(:`name_m1` AS STRING)" not in sql
+        assert "CAST(:`name_m2` AS STRING)" not in sql
+
+    def test_homogeneous_multi_values_are_not_cast(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", String()))
+        stmt = insert(table).values([{"value": "A"}, {"value": "B"}, {"value": "C"}])
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`value_m0` AS STRING)" not in sql
+        assert "CAST(:`value_m1` AS STRING)" not in sql
+        assert "CAST(:`value_m2` AS STRING)" not in sql
+
+    def test_numeric_family_multi_values_are_not_cast(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("score", Numeric()))
+        stmt = insert(table).values([{"score": 1}, {"score": 2.5}, {"score": 3}])
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`score_m0` AS DECIMAL)" not in sql
+        assert "CAST(:`score_m1` AS DECIMAL)" not in sql
+        assert "CAST(:`score_m2` AS DECIMAL)" not in sql
+
+    def test_single_row_insert_does_not_render_casts(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", String()))
+        stmt = insert(table).values({"value": "A"})
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`value` AS STRING)" not in sql
