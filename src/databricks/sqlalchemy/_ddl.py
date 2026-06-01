@@ -223,6 +223,9 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
         Spark inline-table incompatibility for object columns that mix
         primitive families (e.g. INT + STRING).
         """
+        if not self.dialect.enable_multirow_insert_casts:
+            return {}
+
         if not getattr(insert_stmt, "_multi_values", None):
             return {}
 

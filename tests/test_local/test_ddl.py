@@ -458,6 +458,22 @@ class TestMultiRowInsertCasts(DDLTestBase):
         assert "CAST(:`name_m1` AS STRING)" not in sql
         assert "CAST(:`name_m2` AS STRING)" not in sql
 
+    def test_multi_value_casts_can_be_disabled_by_url_param(self):
+        engine = create_engine(
+            "databricks://token:****@****"
+            "?http_path=****&catalog=****&schema=****"
+            "&enable_multirow_insert_casts=false"
+        )
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", String()))
+        stmt = insert(table).values([{"value": 1}, {"value": 0}, {"value": "NE"}])
+
+        sql = str(stmt.compile(bind=engine))
+        assert "CAST(:`value_m0` AS STRING)" not in sql
+        assert ":`value_m0`" in sql
+        assert ":`value_m1`" in sql
+        assert ":`value_m2`" in sql
+
     def test_homogeneous_multi_values_are_not_cast(self):
         metadata = MetaData()
         table = Table("t", metadata, Column("value", String()))

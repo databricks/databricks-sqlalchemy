@@ -42,6 +42,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _parse_bool_url_param(value: Optional[str], default: bool) -> bool:
+    if value is None:
+        return default
+    return value.lower() not in ("0", "false", "no", "off")
+
+
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
@@ -65,6 +71,7 @@ class DatabricksDialect(default.DefaultDialect):
     supports_server_side_cursors: bool = False
     supports_sequences: bool = False
     supports_native_boolean: bool = True
+    enable_multirow_insert_casts: bool = True
 
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
@@ -117,6 +124,9 @@ class DatabricksDialect(default.DefaultDialect):
 
         self.schema = kwargs["schema"]
         self.catalog = kwargs["catalog"]
+        self.enable_multirow_insert_casts = _parse_bool_url_param(
+            url.query.get("enable_multirow_insert_casts"), True
+        )
 
         self._force_paramstyle_to_native_mode()
 
