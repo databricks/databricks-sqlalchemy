@@ -46,6 +46,42 @@ engine = create_engine(
     )
 ```
 
+### Connection URL parameters and `connect_args`
+
+The Databricks SQLAlchemy dialect accepts dialect-specific options in the
+SQLAlchemy connection URL query string:
+
+| Parameter | Required | Default | Description |
+|-|-|-|-|
+| `http_path` | Yes | | HTTP path for the Databricks SQL warehouse or compute resource. |
+| `catalog` | Yes | | Initial catalog for the connection. |
+| `schema` | Yes | | Initial schema for the connection. |
+| `enable_multirow_insert_casts` | No | `true` | Enables targeted casts for mixed scalar values in SQLAlchemy-generated multi-row `INSERT ... VALUES` statements. This avoids Spark inline-table type errors for pandas `to_sql(method="multi")` with mixed scalar/object columns. Set to `false` to disable this rewrite. |
+
+For example, to disable targeted multi-row insert casts:
+
+```python
+engine = create_engine(
+    "databricks://token:dapi***@***.cloud.databricks.com"
+    "?http_path=***&catalog=main&schema=test"
+    "&enable_multirow_insert_casts=false"
+)
+```
+
+Use SQLAlchemy's `connect_args` for DBAPI connection options that should be
+passed through to `databricks-sql-connector`, such as user-agent settings:
+
+```python
+engine = create_engine(
+    "databricks://token:dapi***@***.cloud.databricks.com"
+    "?http_path=***&catalog=main&schema=test",
+    connect_args={"user_agent_entry": "My SQLAlchemy App"},
+)
+```
+
+Dialect URL parameters control SQLAlchemy compilation behavior and are not
+forwarded to the DBAPI connector.
+
 ## Types
 
 The [SQLAlchemy type hierarchy](https://docs.sqlalchemy.org/en/20/core/type_basics.html) contains backend-agnostic type implementations (represented in CamelCase) and backend-specific types (represented in UPPERCASE). The majority of SQLAlchemy's [CamelCase](https://docs.sqlalchemy.org/en/20/core/type_basics.html#the-camelcase-datatypes) types are supported. This means that a SQLAlchemy application using these types should "just work" with Databricks.
