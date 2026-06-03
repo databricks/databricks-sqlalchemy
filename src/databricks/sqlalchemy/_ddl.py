@@ -1,4 +1,7 @@
 import re
+from datetime import date, datetime, time
+from numbers import Number
+from uuid import UUID
 from sqlalchemy.sql import compiler, sqltypes
 import logging
 
@@ -164,6 +167,138 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
                 visited.append(name)
             return self._BIND_TEMPLATE % {"name": name.replace("`", "``")}
         return super().bindparam_string(name, **kw)
+
+    @staticmethod
+    def _split_multivalue_bind_name(bind_name):
+        """Split SQLAlchemy's ``<col>_m<idx>`` bind names into (column, idx)."""
+        match = re.match(r"^(?P<col>.+)_m(?P<idx>\d+)$", bind_name)
+        if not match:
+            return None
+        return match.group("col"), int(match.group("idx"))
+
+    @staticmethod
+    def _value_family(value):
+        """Return scalar value family; ``None`` means non-scalar/unsupported."""
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "bool"
+        if isinstance(value, Number):
+            return "number"
+        if isinstance(value, str):
+            return "string"
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return "binary"
+        if isinstance(value, (date, time, datetime)):
+            return "temporal"
+        if isinstance(value, UUID):
+            return "uuid"
+        return None
+
+    @staticmethod
+    def _has_custom_bind_expression(type_engine):
+        """True if the type (or its impl) customizes bind-expression rendering."""
+        type_cls = type(type_engine)
+        if (
+            getattr(type_cls, "bind_expression", None)
+            is not sqltypes.TypeEngine.bind_expression
+        ):
+            return True
+
+        impl = getattr(type_engine, "impl", None)
+        if impl is not None:
+            impl_cls = type(impl)
+            if (
+                getattr(impl_cls, "bind_expression", None)
+                is not sqltypes.TypeEngine.bind_expression
+            ):
+                return True
+        return False
+
+    def _build_multi_value_cast_plan(self, insert_stmt):
+        """Return {bind_name: cast_sql_type} for multi-row VALUES insert binds.
+
+        Cast only *mixed scalar* multi-row bind groups whose SQLAlchemy target
+        type compiles to STRING. This avoids silent data loss for non-string
+        target columns and avoids breaking complex/custom bind types (e.g.
+        ARRAY/MAP/VARIANT), while still fixing Spark inline-table
+        incompatibility for object columns that mix primitive families into a
+        string-like target column.
+        """
+        if not self.dialect.enable_multirow_insert_casts:
+            return {}
+
+        if not getattr(insert_stmt, "_multi_values", None):
+            return {}
+
+        grouped_binds = {}
+        for bind_name, bind_param in self.binds.items():
+            split = self._split_multivalue_bind_name(bind_name)
+            if split is None:
+                continue
+            column_name, _ = split
+            grouped_binds.setdefault(column_name, []).append((bind_name, bind_param))
+
+        cast_plan = {}
+        for bind_entries in grouped_binds.values():
+            families = set()
+            has_non_scalar = False
+            has_custom_bind_expression = False
+
+            for _, bind_param in bind_entries:
+                value_family = self._value_family(getattr(bind_param, "value", None))
+                if value_family is None:
+                    has_non_scalar = True
+                    break
+                if value_family != "null":
+                    families.add(value_family)
+
+                type_engine = getattr(bind_param, "type", None)
+                if type_engine is not None and self._has_custom_bind_expression(
+                    type_engine
+                ):
+                    has_custom_bind_expression = True
+
+            if has_non_scalar or has_custom_bind_expression or len(families) <= 1:
+                continue
+
+            bind_targets = []
+            for bind_name, bind_param in bind_entries:
+                type_engine = getattr(bind_param, "type", None)
+                if type_engine is None or isinstance(type_engine, sqltypes.NullType):
+                    continue
+
+                dialect_type = type_engine._unwrapped_dialect_impl(self.dialect)
+                target_type = self.dialect.type_compiler_instance.process(
+                    dialect_type, identifier_preparer=self.preparer
+                )
+                bind_targets.append((bind_name, target_type))
+
+            if not bind_targets or any(
+                target_type.upper() != "STRING" for _, target_type in bind_targets
+            ):
+                continue
+
+            for bind_name, target_type in bind_targets:
+                cast_plan[bind_name] = target_type
+
+        return cast_plan
+
+    def _apply_multi_value_casts(self, sql_text, insert_stmt):
+        """Wrap selected ``:`name``` markers with ``CAST(... AS <type>)``."""
+        cast_plan = self._build_multi_value_cast_plan(insert_stmt)
+        if not cast_plan:
+            return sql_text
+
+        rendered = sql_text
+        for bind_name, target_type in cast_plan.items():
+            marker = self._BIND_TEMPLATE % {"name": bind_name.replace("`", "``")}
+            rendered = rendered.replace(marker, f"CAST({marker} AS {target_type})")
+        return rendered
+
+    def visit_insert(self, insert_stmt, **kw):
+        sql_text = super().visit_insert(insert_stmt, **kw)
+        return self._apply_multi_value_casts(sql_text, insert_stmt)
 
     def limit_clause(self, select, **kw):
         """Identical to the default implementation of SQLCompiler.limit_clause except it writes LIMIT ALL instead of LIMIT -1,
