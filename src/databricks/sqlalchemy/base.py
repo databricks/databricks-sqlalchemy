@@ -45,7 +45,11 @@ logger = logging.getLogger(__name__)
 def _parse_bool_url_param(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
-    return value.lower() not in ("0", "false", "no", "off")
+    if value.lower() in ("1", "true", "yes", "on"):
+        return True
+    if value.lower() in ("0", "false", "no", "off"):
+        return False
+    return default
 
 
 class DatabricksDialect(default.DefaultDialect):

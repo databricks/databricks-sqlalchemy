@@ -6,8 +6,9 @@ from uuid import UUID
 
 import pandas as pd
 import pytest
-from sqlalchemy import Uuid, create_engine, text
+from sqlalchemy import Integer, Uuid, create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DatabaseError
 
 from databricks.sqlalchemy import DatabricksVariant
 
@@ -273,6 +274,37 @@ def test_pandas_to_sql_multi_mixed_scalar_families_cast_to_string(db_engine: Eng
             "christmas",
             "datetime",
             str(UUID(int=256)),
+        )
+    finally:
+        with db_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {fq_table_name}"))
+
+
+def test_pandas_to_sql_multi_mixed_scalar_non_string_target_fails_loudly(
+    db_engine: Engine,
+):
+    table_name = f"pecoblr_2746_non_string_target_{uuid.uuid4().hex[:8]}"
+    fq_table_name = f"`main`.`default`.`{table_name}`"
+    df = pd.DataFrame({"value": [1, "not-a-number"]})
+
+    try:
+        with db_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {fq_table_name}"))
+            conn.execute(text(f"CREATE TABLE {fq_table_name} (value INT) USING DELTA"))
+
+        with pytest.raises(DatabaseError) as exc_info:
+            df.to_sql(
+                table_name,
+                db_engine,
+                schema="default",
+                if_exists="append",
+                index=False,
+                method="multi",
+                dtype={"value": Integer()},
+            )
+
+        assert "INVALID_INLINE_TABLE.INCOMPATIBLE_TYPES_IN_INLINE_TABLE" in str(
+            exc_info.value
         )
     finally:
         with db_engine.begin() as conn:

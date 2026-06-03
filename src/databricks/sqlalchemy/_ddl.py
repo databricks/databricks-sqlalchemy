@@ -218,10 +218,12 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
     def _build_multi_value_cast_plan(self, insert_stmt):
         """Return {bind_name: cast_sql_type} for multi-row VALUES insert binds.
 
-        Cast only *mixed scalar* multi-row bind groups. This avoids breaking
-        complex/custom bind types (e.g. ARRAY/MAP/VARIANT) while still fixing
-        Spark inline-table incompatibility for object columns that mix
-        primitive families (e.g. INT + STRING).
+        Cast only *mixed scalar* multi-row bind groups whose SQLAlchemy target
+        type compiles to STRING. This avoids silent data loss for non-string
+        target columns and avoids breaking complex/custom bind types (e.g.
+        ARRAY/MAP/VARIANT), while still fixing Spark inline-table
+        incompatibility for object columns that mix primitive families into a
+        string-like target column.
         """
         if not self.dialect.enable_multirow_insert_casts:
             return {}
@@ -260,6 +262,7 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
             if has_non_scalar or has_custom_bind_expression or len(families) <= 1:
                 continue
 
+            bind_targets = []
             for bind_name, bind_param in bind_entries:
                 type_engine = getattr(bind_param, "type", None)
                 if type_engine is None or isinstance(type_engine, sqltypes.NullType):
@@ -269,6 +272,14 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
                 target_type = self.dialect.type_compiler_instance.process(
                     dialect_type, identifier_preparer=self.preparer
                 )
+                bind_targets.append((bind_name, target_type))
+
+            if not bind_targets or any(
+                target_type.upper() != "STRING" for _, target_type in bind_targets
+            ):
+                continue
+
+            for bind_name, target_type in bind_targets:
                 cast_plan[bind_name] = target_type
 
         return cast_plan

@@ -5,7 +5,7 @@ from sqlalchemy import (
     String,
     Table,
     Numeric,
-    Integer,
+    Uuid,
     create_engine,
     insert,
 )
@@ -458,6 +458,35 @@ class TestMultiRowInsertCasts(DDLTestBase):
         assert "CAST(:`name_m1` AS STRING)" not in sql
         assert "CAST(:`name_m2` AS STRING)" not in sql
 
+    def test_mixed_scalars_are_not_cast_for_non_string_targets(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", Numeric()))
+        stmt = insert(table).values([{"value": 1}, {"value": "not-a-number"}])
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`value_m0` AS DECIMAL)" not in sql
+        assert "CAST(:`value_m1` AS DECIMAL)" not in sql
+
+    def test_mixed_scalars_are_cast_for_string_compiled_types(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", Uuid()))
+        stmt = insert(table).values(
+            [{"value": "00000000-0000-0000-0000-0000000000ff"}, {"value": 1}]
+        )
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`value_m0` AS STRING)" in sql
+        assert "CAST(:`value_m1` AS STRING)" in sql
+
+    def test_bool_number_mixed_string_target_is_cast(self):
+        metadata = MetaData()
+        table = Table("t", metadata, Column("value", String()))
+        stmt = insert(table).values([{"value": True}, {"value": 1}])
+
+        sql = str(stmt.compile(bind=self.engine))
+        assert "CAST(:`value_m0` AS STRING)" in sql
+        assert "CAST(:`value_m1` AS STRING)" in sql
+
     def test_multi_value_casts_can_be_disabled_by_url_param(self):
         engine = create_engine(
             "databricks://token:****@****"
@@ -473,6 +502,21 @@ class TestMultiRowInsertCasts(DDLTestBase):
         assert ":`value_m0`" in sql
         assert ":`value_m1`" in sql
         assert ":`value_m2`" in sql
+
+    def test_empty_or_unknown_cast_gate_url_param_uses_default_enabled(self):
+        for param_value in ("", "garbage", "flase"):
+            engine = create_engine(
+                "databricks://token:****@****"
+                "?http_path=****&catalog=****&schema=****"
+                f"&enable_multirow_insert_casts={param_value}"
+            )
+            metadata = MetaData()
+            table = Table("t", metadata, Column("value", String()))
+            stmt = insert(table).values([{"value": 1}, {"value": "NE"}])
+
+            sql = str(stmt.compile(bind=engine))
+            assert "CAST(:`value_m0` AS STRING)" in sql
+            assert "CAST(:`value_m1` AS STRING)" in sql
 
     def test_homogeneous_multi_values_are_not_cast(self):
         metadata = MetaData()
