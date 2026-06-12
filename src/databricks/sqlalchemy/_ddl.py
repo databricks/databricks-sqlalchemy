@@ -285,14 +285,27 @@ class DatabricksStatementCompiler(compiler.SQLCompiler):
         return cast_plan
 
     def _apply_multi_value_casts(self, sql_text, insert_stmt):
-        """Wrap selected ``:`name``` markers with ``CAST(... AS <type>)``."""
+        """Wrap selected ``:`name``` markers with ``CAST(... AS <type>)``.
+
+        ``self.binds`` is keyed by the *raw* bind name (e.g.
+        ``'col with space_m0'``) but SQLAlchemy renders the marker using the
+        *escaped* form after applying ``bindname_escape_characters``
+        (space/./[/]/(/)/%/: → ``_`` etc., see ``compiler.py:bindparam_string``).
+        The mapping is recorded in ``self.escaped_bind_names`` as
+        ``{original: escaped}``. We must look up the escaped form when
+        reconstructing the marker — otherwise ``str.replace`` is a no-op for any
+        column name containing an escaped character and no cast is applied,
+        re-triggering the inline-table type incompatibility that this method
+        exists to prevent (PECOBLR-2746 follow-up).
+        """
         cast_plan = self._build_multi_value_cast_plan(insert_stmt)
         if not cast_plan:
             return sql_text
 
         rendered = sql_text
         for bind_name, target_type in cast_plan.items():
-            marker = self._BIND_TEMPLATE % {"name": bind_name.replace("`", "``")}
+            rendered_name = self.escaped_bind_names.get(bind_name, bind_name)
+            marker = self._BIND_TEMPLATE % {"name": rendered_name.replace("`", "``")}
             rendered = rendered.replace(marker, f"CAST({marker} AS {target_type})")
         return rendered
 
