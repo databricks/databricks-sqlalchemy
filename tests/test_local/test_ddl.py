@@ -545,3 +545,104 @@ class TestMultiRowInsertCasts(DDLTestBase):
 
         sql = str(stmt.compile(bind=self.engine))
         assert "CAST(:`value` AS STRING)" not in sql
+
+
+class TestMultiRowInsertCastsEscapedBindNames(DDLTestBase):
+    """Regression tests for PECOBLR-2746 follow-up.
+
+    SQLAlchemy's ``bindname_escape_characters`` translates the chars space,
+    ``.``, ``[``, ``]``, ``(``, ``)``, ``%``, ``:`` in bind names to ``_`` etc.
+    The cast pass keys off ``self.binds`` (raw names) but the rendered SQL uses
+    the escaped form. If the cast pass doesn't look up the escaped name, the
+    str.replace becomes a no-op and the mixed-type insert fails again. These
+    tests pin the fix.
+    """
+
+    # Each pair is (column_name, expected_bind_token_inside_backticks).
+    # The expected token mirrors SQLAlchemy's default bindname_escape_characters
+    # map: space/./[/] → _, ( → A, ) → Z, % → P, : → C.
+    _ESCAPED_NAMES = [
+        ("col with space", "col_with_space"),
+        ("col.dot", "col_dot"),
+        ("col[bracket]", "col_bracket_"),
+        ("col(paren)", "colAparenZ"),
+        ("col%pct", "colPpct"),
+        ("col:colon", "colCcolon"),
+    ]
+
+    @pytest.mark.parametrize("column_name,escaped_token", _ESCAPED_NAMES)
+    def test_cast_renders_for_escape_char_column(self, column_name, escaped_token):
+        metadata = MetaData()
+        table = Table("t", metadata, Column(column_name, String()))
+        stmt = insert(table).values(
+            [{column_name: 1}, {column_name: 0}, {column_name: "NE"}]
+        )
+
+        sql = str(stmt.compile(bind=self.engine))
+
+        for idx in range(3):
+            marker = f":`{escaped_token}_m{idx}`"
+            cast = f"CAST({marker} AS STRING)"
+            assert cast in sql, (
+                f"expected {cast!r} in compiled SQL for column "
+                f"{column_name!r}, got:\n{sql}"
+            )
+            # And the bare marker must not appear standalone — every
+            # occurrence of it must be inside the CAST(...).
+            assert sql.count(marker) == sql.count(cast), (
+                f"bare {marker!r} appears outside CAST(...) for column "
+                f"{column_name!r}:\n{sql}"
+            )
+
+    def test_cast_renders_for_backtick_column_name(self):
+        """Literal-backtick column: bindparam_string short-circuits super and
+        doubles the backtick directly, so escaped_bind_names stays empty. Our
+        `.get(bind_name, bind_name)` falls back to the raw name and the
+        `.replace("`", "``")` in the marker rebuild reproduces the same
+        doubling, so the marker matches and CAST wraps correctly.
+        """
+        metadata = MetaData()
+        table = Table("t", metadata, Column("col`tick", String()))
+        stmt = insert(table).values(
+            [{"col`tick": 1}, {"col`tick": 0}, {"col`tick": "NE"}]
+        )
+
+        sql = str(stmt.compile(bind=self.engine))
+        for idx in range(3):
+            assert f"CAST(:`col``tick_m{idx}` AS STRING)" in sql, sql
+
+    def test_cast_renders_for_backtick_plus_escape_char(self):
+        """Both backtick and a default-escape-map char in the same column name.
+        The backtick path bypasses super entirely (so the escape map never
+        runs), and `.replace("`", "``")` doubles the backtick — the dot stays
+        verbatim inside the backtick-quoted marker.
+        """
+        metadata = MetaData()
+        table = Table("t", metadata, Column("col`x.y", String()))
+        stmt = insert(table).values([{"col`x.y": 1}, {"col`x.y": 0}, {"col`x.y": "NE"}])
+
+        sql = str(stmt.compile(bind=self.engine))
+        for idx in range(3):
+            assert f"CAST(:`col``x.y_m{idx}` AS STRING)" in sql, sql
+
+    def test_cast_renders_for_mixed_escape_chars_in_same_table(self):
+        metadata = MetaData()
+        table = Table(
+            "t",
+            metadata,
+            Column("a b", String()),
+            Column("c.d", String()),
+            Column("e", String()),
+        )
+        stmt = insert(table).values(
+            [
+                {"a b": 1, "c.d": 1, "e": 1},
+                {"a b": 0, "c.d": 0, "e": 0},
+                {"a b": "NE", "c.d": "NE", "e": "NE"},
+            ]
+        )
+
+        sql = str(stmt.compile(bind=self.engine))
+        for token in ("a_b", "c_d", "e"):
+            for idx in range(3):
+                assert f"CAST(:`{token}_m{idx}` AS STRING)" in sql, sql
