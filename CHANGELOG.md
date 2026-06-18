@@ -1,8 +1,12 @@
 # Release History
 
-# 2.0.10 (unreleased)
+# 2.0.10 (2026-06-18)
 
-- Fix: Use public `user_agent_entry` connect parameter instead of deprecated `_user_agent_entry` to silence the deprecation warning from `databricks-sql-connector >= 4.0.1` (databricks/databricks-sqlalchemy#36)
+- Fix: Quote bind parameter names containing non-identifier characters (e.g. hyphens, backticks) so columns and parameters with special characters bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)
+- Fix: Bind UUID values in canonical hyphenated form (databricks/databricks-sqlalchemy#63 by @sreekanth-db, fixes #50)
+- Fix: Support pandas multi-row inserts with mixed-type columns via adaptive CAST, including bind names that contain escape-map characters, with an opt-out gate (databricks/databricks-sqlalchemy#68, #69 by @msrathore-db)
+- Fix: Use public `user_agent_entry` connect parameter instead of deprecated `_user_agent_entry` to silence the deprecation warning from `databricks-sql-connector >= 4.0.1` (databricks/databricks-sqlalchemy#64 by @jprakash-db)
+- Fix: Promote `Float(precision > 24)` to `DOUBLE` in `CREATE TABLE` to preserve precision (databricks/databricks-sqlalchemy#65 by @jayantsing-db)
 
 # 2.0.9 (2026-02-20)
 
