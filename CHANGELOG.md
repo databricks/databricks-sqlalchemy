@@ -1,5 +1,9 @@
 # Release History
 
+# Unreleased
+
+- Fix: Cache `get_foreign_keys()` per table per reflection pass, so reflecting a schema no longer issues a redundant `DESCRIBE TABLE EXTENDED` per table on top of the one `get_pk_constraint()` already made (fixes #72)
+
 # 2.0.10 (2026-06-18)
 
 - Fix: Quote bind parameter names containing non-identifier characters (e.g. hyphens, backticks) so columns and parameters with special characters bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)
