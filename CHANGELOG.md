@@ -1,5 +1,10 @@
 # Release History
 
+# Unreleased
+
+- Fix: Cache `get_foreign_keys()` so repeated reflection of a table through the same `Inspector` issues one `DESCRIBE TABLE EXTENDED` instead of one per call (fixes #72)
+- Fix: Cache `get_columns()` so repeated reflection of a table through the same `Inspector` issues one `GetColumns` round-trip instead of one per call (fixes #75)
+
 # 2.0.10 (2026-06-18)
 
 - Fix: Quote bind parameter names containing non-identifier characters (e.g. hyphens, backticks) so columns and parameters with special characters bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)
