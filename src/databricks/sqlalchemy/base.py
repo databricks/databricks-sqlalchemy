@@ -136,6 +136,7 @@ class DatabricksDialect(default.DefaultDialect):
 
         return [], kwargs
 
+    @reflection.cache
     def get_columns(
         self, connection, table_name, schema=None, **kwargs
     ) -> List[ReflectedColumn]:
