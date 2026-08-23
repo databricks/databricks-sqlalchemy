@@ -1,5 +1,9 @@
 # Release History
 
+# Unreleased
+
+- Fix: `Enum` columns no longer raise `TypeError: String.__init__() got an unexpected keyword argument '_enums'`. `Enum` now resolves to a dedicated `DatabricksEnumType` instead of being adapted through the `String` colspec, keeping Enum validation and length inference while escaping literals the Databricks way (fixes #61)
+
 # 2.0.10 (2026-06-18)
 
 - Fix: Quote bind parameter names containing non-identifier characters (e.g. hyphens, backticks) so columns and parameters with special characters bind correctly (databricks/databricks-sqlalchemy#60 by @msrathore-db)

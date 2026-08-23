@@ -4,9 +4,12 @@ from uuid import UUID
 import pytest
 import sqlalchemy
 from sqlalchemy import Column, MetaData, Table, select
+from sqlalchemy.schema import CreateTable
 
 from databricks.sqlalchemy.base import DatabricksDialect
 from databricks.sqlalchemy._types import (
+    DatabricksEnumType,
+    DatabricksStringType,
     DatabricksUUID,
     DatabricksVariant,
     TINYINT,
@@ -366,3 +369,91 @@ class TestDatabricksUUID:
         assert bind(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HEX) == self.HYPHENATED
+
+
+class Colour(enum.Enum):
+    """A native Python enum, the other way users declare Enum columns."""
+
+    RED = "red"
+    BLUE = "blue"
+
+
+class TestDatabricksEnum:
+    """Regression coverage for github.com/databricks/databricks-sqlalchemy/issues/61.
+
+    ``Enum`` subclasses ``String``, so before this fix it resolved through the
+    ``String`` colspec and SQLAlchemy tried to adapt it to
+    ``DatabricksStringType``. ``Enum.adapt()`` forwards internal keyword
+    arguments that ``String`` does not accept, so every operation touching an
+    Enum column raised ``TypeError: String.__init__() got an unexpected
+    keyword argument '_enums'``.
+    """
+
+    dialect = DatabricksDialect()
+    TRICKY = "O'Bri\\en"
+
+    def test_dialect_routes_enum_to_databricks_enum(self):
+        """The colspecs entry is what keeps Enum off the String path."""
+        assert self.dialect.colspecs[sqlalchemy.types.Enum] is DatabricksEnumType
+
+    def test_enum_column_adapts_without_type_error(self):
+        """The reported crash: adapting an Enum blew up before it could compile."""
+        assert sqlalchemy.Enum("A", "B", "C").dialect_impl(self.dialect) is not None
+
+    def test_create_table_with_enum_column_compiles(self):
+        meta = MetaData()
+        table = Table(
+            "my_table",
+            meta,
+            Column("status", sqlalchemy.Enum("A", "B", "C"), nullable=False),
+        )
+
+        ddl = str(CreateTable(table).compile(dialect=self.dialect))
+
+        assert "status STRING NOT NULL" in ddl
+
+    def test_native_python_enum_column_compiles(self):
+        meta = MetaData()
+        table = Table("my_table", meta, Column("colour", sqlalchemy.Enum(Colour)))
+
+        ddl = str(CreateTable(table).compile(dialect=self.dialect))
+
+        assert "colour STRING" in ddl
+
+    def test_enum_literal_is_escaped_like_a_plain_string(self):
+        """Enum literals must use backslash escaping, not SQLAlchemy's doubling.
+
+        Letting Enum fall through to SQLAlchemy's own implementation would
+        render ``'O''Bri\\en'``, which is precisely the breakage
+        ``DatabricksStringType`` exists to prevent.
+        """
+        enum_process = DatabricksEnumType("A", self.TRICKY).literal_processor(
+            self.dialect
+        )
+        string_process = DatabricksStringType().literal_processor(self.dialect)
+
+        assert enum_process(self.TRICKY) == string_process(self.TRICKY)
+        assert "''" not in enum_process(self.TRICKY)
+
+    def test_enum_length_is_inferred_from_longest_value(self):
+        impl = sqlalchemy.Enum("A", "LONGER_VALUE").dialect_impl(self.dialect)
+
+        assert impl.length == len("LONGER_VALUE")
+
+    def test_validate_strings_still_rejects_unknown_values(self):
+        """Subclassing Enum keeps its validation; wrapping it in a TypeDecorator did not."""
+        impl = sqlalchemy.Enum("A", "B", validate_strings=True).dialect_impl(
+            self.dialect
+        )
+        process = impl.bind_processor(self.dialect)
+
+        assert process("A") == "A"
+        with pytest.raises(LookupError):
+            process("ZZZ")
+
+    def test_plain_string_columns_are_unaffected(self):
+        """The Enum entry must not divert ordinary String columns."""
+        assert self.dialect.colspecs[sqlalchemy.types.String] is DatabricksStringType
+        assert isinstance(
+            sqlalchemy.String(50).dialect_impl(self.dialect), DatabricksStringType
+        )
