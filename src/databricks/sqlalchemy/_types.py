@@ -341,6 +341,49 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
         return process
 
 
+class DatabricksEnumType(sqlalchemy.types.Enum):
+    """Enum columns, escaped the Databricks way.
+
+    ``Enum`` is a subclass of ``String``, so without an entry of its own it
+    resolves through the ``String`` colspec above and SQLAlchemy adapts it to
+    ``DatabricksStringType``. That adaptation raises
+    ``TypeError: String.__init__() got an unexpected keyword argument
+    '_enums'``, because ``Enum.adapt()`` forwards its internal keyword
+    arguments and ``TypeDecorator.__init__`` passes them straight on to its
+    ``impl`` (``String``), which does not accept them. Any operation touching
+    an Enum column therefore failed, including ``metadata.create_all()``.
+
+    Filtering those keywords out one at a time does not work — dropping
+    ``_enums`` just moves the failure to ``_disable_warnings`` — and letting
+    Enum fall back to SQLAlchemy's own implementation reintroduces the
+    single-quote doubling that ``DatabricksStringType`` exists to avoid.
+
+    Subclassing ``Enum`` instead keeps every Enum behaviour that the generic
+    type provides (value validation under ``validate_strings``, length
+    inference from the longest value, native Python ``enum.Enum`` support)
+    while overriding only the literal rendering, so Enum literals are escaped
+    exactly as plain strings are.
+    """
+
+    pe = ParamEscaper()
+    cache_ok = True
+
+    def literal_processor(self, dialect):
+        """Escape Enum literals the same way ``DatabricksStringType`` does.
+
+        See that class for why the default ``String`` literal processing —
+        which doubles single-quotes — cannot be used against Databricks.
+        """
+
+        def process(value):
+            _step1 = self.pe.escape_string(value)
+            if dialect.identifier_preparer._double_percents:
+                return _step1.replace("%", "%%")
+            return _step1
+
+        return process
+
+
 class DatabricksUUID(sqlalchemy.types.Uuid):
     """Bind UUIDs in their canonical 8-4-4-4-12 hyphenated form.
 
