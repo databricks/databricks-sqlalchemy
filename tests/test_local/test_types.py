@@ -366,3 +366,26 @@ class TestDatabricksUUID:
         assert bind(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HEX) == self.HYPHENATED
+
+
+def test_timestamp_result_keeps_session_time_zone():
+    """A TIMESTAMP read in a non-UTC session keeps its instant."""
+    import datetime
+    import zoneinfo
+
+    import sqlalchemy
+
+    from databricks.sqlalchemy import TIMESTAMP
+
+    dialect = sqlalchemy.create_engine(
+        "databricks://token:x@host?http_path=p"
+    ).dialect
+    process = TIMESTAMP().dialect_impl(dialect).result_processor(dialect, None)
+    ist = datetime.datetime(
+        2024, 3, 1, 12, 29, 58, tzinfo=zoneinfo.ZoneInfo("Asia/Kolkata")
+    )
+    assert process(ist) == ist
+    assert process(ist).utcoffset() == ist.utcoffset()
+    naive = datetime.datetime(2024, 3, 1)
+    assert process(naive) == naive.replace(tzinfo=datetime.timezone.utc)
+    assert process(None) is None
