@@ -252,3 +252,63 @@ def test_multilevel_map_type_parsing(internal_type):
         internal_type.compile(dialect=dialect)
     )
     assert actual_parsed == expected_parsed
+
+
+@pytest.mark.parametrize(
+    "type_name, expected",
+    [
+        ("ARRAY<STRING>", "ARRAY<STRING>"),
+        ("ARRAY<ARRAY<BIGINT>>", "ARRAY<ARRAY<BIGINT>>"),
+        ("MAP<STRING, INT>", "MAP<STRING,INT>"),
+        ("MAP<INT, ARRAY<DECIMAL(10,2)>>", "MAP<INT,ARRAY<DECIMAL(10, 2)>>"),
+        ("ARRAY<MAP<STRING, TIMESTAMP>>", "ARRAY<MAP<STRING,TIMESTAMP>>"),
+        ("DECIMAL(38,18)", "DECIMAL(38, 18)"),
+        ("BIGINT", "BIGINT"),
+    ],
+)
+def test_parse_type_name_nested(type_name, expected):
+    from databricks.sqlalchemy._parse import parse_type_name
+
+    assert parse_type_name(type_name).compile(dialect=dialect) == expected
+
+
+@pytest.mark.parametrize(
+    "type_name", ["TIME(6)", "INTERVAL DAY TO SECOND", "VOID", "GEOMETRY(4326)"]
+)
+def test_parse_type_name_unknown_type_does_not_raise(type_name):
+    from sqlalchemy.exc import SAWarning
+    from sqlalchemy.types import NullType
+
+    from databricks.sqlalchemy._parse import (
+        parse_column_info_from_tgetcolumnsresponse,
+        parse_type_name,
+    )
+
+    with pytest.warns(SAWarning, match="Did not recognize type"):
+        assert isinstance(parse_type_name(type_name), NullType)
+
+    class Row:
+        TYPE_NAME = type_name
+        COLUMN_NAME = "c"
+        NULLABLE = 1
+        COLUMN_DEF = None
+        REMARKS = None
+
+    with pytest.warns(SAWarning):
+        column = parse_column_info_from_tgetcolumnsresponse(Row())
+    assert column["name"] == "c" and isinstance(column["type"], NullType)
+
+
+@pytest.mark.parametrize(
+    "type_name, expected",
+    [
+        ("DECIMAL(10, 2)", "DECIMAL(10, 2)"),
+        ("decimal(10,2)", "DECIMAL(10, 2)"),
+        ("array<decimal(38, 18)>", "ARRAY<DECIMAL(38, 18)>"),
+        ("DECIMAL", "DECIMAL"),
+    ],
+)
+def test_parse_type_name_decimal_spelling(type_name, expected):
+    from databricks.sqlalchemy._parse import parse_type_name
+
+    assert parse_type_name(type_name).compile(dialect=dialect) == expected
