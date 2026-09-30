@@ -426,14 +426,10 @@ class DatabricksArray(UserDefinedType):
         self.item_type = item_type() if isinstance(item_type, type) else item_type
 
     def bind_processor(self, dialect):
-        item_processor = self.item_type.bind_processor(dialect)
-        if item_processor is None:
-            item_processor = identity_processor
+        return _collection_bind_processor(self, dialect)
 
-        def process(value):
-            return [item_processor(val) for val in value]
-
-        return process
+    def bind_expression(self, bindvalue):
+        return _collection_bind_expression(self, bindvalue)
 
 
 @compiles(DatabricksArray, "databricks")
@@ -458,21 +454,10 @@ class DatabricksMap(UserDefinedType):
         self.value_type = value_type() if isinstance(value_type, type) else value_type
 
     def bind_processor(self, dialect):
-        key_processor = self.key_type.bind_processor(dialect)
-        value_processor = self.value_type.bind_processor(dialect)
+        return _collection_bind_processor(self, dialect)
 
-        if key_processor is None:
-            key_processor = identity_processor
-        if value_processor is None:
-            value_processor = identity_processor
-
-        def process(value):
-            return {
-                key_processor(key): value_processor(value)
-                for key, value in value.items()
-            }
-
-        return process
+    def bind_expression(self, bindvalue):
+        return _collection_bind_expression(self, bindvalue)
 
 
 @compiles(DatabricksMap, "databricks")
@@ -537,3 +522,151 @@ class DatabricksVariant(UserDefinedType):
 @compiles(DatabricksVariant, "databricks")
 def compile_variant(type_, compiler, **kw):
     return "VARIANT"
+
+
+# --- Binding ARRAY/MAP values -------------------------------------------------
+#
+# The warehouse ignores the elements of every Thrift ARRAY/MAP parameter
+# encoding (native ArrayParameter/MapParameter binds persist as empty
+# collections, without an error). A typed value is therefore sent as ONE JSON
+# STRING parameter and rebuilt in SQL with from_json. JSON object keys are
+# strings, so maps parse as MAP<STRING, V> and are CAST to the declared type.
+# FAILFAST makes malformed elements fail the statement instead of becoming NULL.
+# The SQL does not depend on the element count and uses no lambdas, so it works
+# in multi-row INSERT ... VALUES and executemany.
+
+_FROM_JSON_OPTIONS = "map('mode', 'FAILFAST')"
+
+
+def _json_scalar(item):
+    import decimal
+    import math
+    from datetime import date
+
+    if item is None:
+        return "null"
+    if isinstance(item, bool):
+        return "true" if item else "false"
+    if isinstance(item, int):
+        return str(item)
+    if isinstance(item, decimal.Decimal):
+        if not item.is_finite():
+            raise ValueError("non-finite Decimal in a Databricks collection bind")
+        return format(item, "f")
+    if isinstance(item, float):
+        if not math.isfinite(item):
+            raise ValueError("non-finite float in a Databricks collection bind")
+        return repr(item)
+    if isinstance(item, str):
+        return json.dumps(item, ensure_ascii=False)
+    if isinstance(item, (datetime, date)):
+        return json.dumps(item.isoformat())
+    raise TypeError(f"cannot bind {type(item).__name__} inside a Databricks collection")
+
+
+def _json_key(key):
+    if key is None:
+        raise ValueError("NULL map key in a Databricks collection bind")
+    if isinstance(key, str):
+        return key
+    if isinstance(key, bool):
+        return "true" if key else "false"
+    if isinstance(key, (datetime,)) or hasattr(key, "isoformat"):
+        return key.isoformat()
+    return _json_scalar(key)
+
+
+def _leaf_bind_processor(type_, dialect):
+    """The element type's own (dialect-adapted) bind processor, if any.
+
+    Applied before JSON serialization so element types that convert their
+    values (Uuid, Time, custom TypeDecorators, ...) keep working inside a
+    collection, as they did before values were sent as JSON.
+    """
+    return type_.dialect_impl(dialect).bind_processor(dialect)
+
+
+def _collection_json(value, type_, dialect):
+    if value is None:
+        return "null"
+    if isinstance(type_, DatabricksArray):
+        return (
+            "["
+            + ",".join(_collection_json(v, type_.item_type, dialect) for v in value)
+            + "]"
+        )
+    if isinstance(type_, DatabricksMap):
+        key_processor = _leaf_bind_processor(type_.key_type, dialect)
+        return (
+            "{"
+            + ",".join(
+                json.dumps(
+                    _json_key(key_processor(k) if key_processor else k),
+                    ensure_ascii=False,
+                )
+                + ":"
+                + _collection_json(v, type_.value_type, dialect)
+                for k, v in dict(value).items()
+            )
+            + "}"
+        )
+    processor = _leaf_bind_processor(type_, dialect)
+    return _json_scalar(processor(value) if processor else value)
+
+
+def _json_schema(type_):
+    if isinstance(type_, DatabricksArray):
+        return f"ARRAY<{_json_schema(type_.item_type)}>"
+    if isinstance(type_, DatabricksMap):
+        return f"MAP<STRING, {_json_schema(type_.value_type)}>"
+    from databricks.sqlalchemy import DatabricksDialect
+
+    return DatabricksDialect().type_compiler_instance.process(type_)
+
+
+def _has_map(type_):
+    if isinstance(type_, DatabricksMap):
+        return True
+    return isinstance(type_, DatabricksArray) and _has_map(type_.item_type)
+
+
+def _collection_bind_processor(type_, dialect):
+    def process(value):
+        return None if value is None else _collection_json(value, type_, dialect)
+
+    return process
+
+
+def _collection_bind_expression(type_, bindvalue):
+    parsed = expression.func.from_json(
+        bindvalue,
+        expression.literal_column(f"'{_json_schema(type_)}'"),
+        expression.literal_column(_FROM_JSON_OPTIONS),
+    )
+    if _has_map(type_):
+        return expression.cast(parsed, type_)
+    return expression.type_coerce(parsed, type_)
+
+
+class DatabricksBinary(TypeDecorator):
+    """LargeBinary values bind as a hex STRING decoded with unhex().
+
+    The connector has no DB-API Binary() constructor (LargeBinary's default bind
+    processor raises AttributeError), treats bytes as a Sequence (sending an
+    ARRAY parameter) and the warehouse rejects BINARY as a parameter type.
+    """
+
+    impl = sqlalchemy.types.LargeBinary
+    cache_ok = True
+
+    def bind_processor(self, dialect):
+        def process(value):
+            return None if value is None else bytes(value).hex()
+
+        return process
+
+    def bind_expression(self, bindvalue):
+        return expression.func.unhex(bindvalue, type_=self)
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else bytes(value)
