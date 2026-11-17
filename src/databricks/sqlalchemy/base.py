@@ -449,7 +449,7 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
         if not val:
             output = "sqlalchemy"
 
-        if val and "sqlalchemy" in val:
+        elif "sqlalchemy" in val:
             output = val
 
         else:
