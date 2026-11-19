@@ -136,6 +136,7 @@ class DatabricksDialect(default.DefaultDialect):
 
         return [], kwargs
 
+    @reflection.cache
     def get_columns(
         self, connection, table_name, schema=None, **kwargs
     ) -> List[ReflectedColumn]:
@@ -253,6 +254,7 @@ class DatabricksDialect(default.DefaultDialect):
         # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
         return build_pk_dict(pk_name, pk_constraint_string)  # type: ignore
 
+    @reflection.cache
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
     ) -> List[ReflectedForeignKeyConstraint]:
