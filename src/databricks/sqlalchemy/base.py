@@ -81,6 +81,10 @@ class DatabricksDialect(default.DefaultDialect):
         sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
         sqlalchemy.types.String: dialect_type_impl.DatabricksStringType,
+        # Enum subclasses String, so without an entry of its own it would
+        # resolve to DatabricksStringType and fail to adapt. See
+        # DatabricksEnumType.
+        sqlalchemy.types.Enum: dialect_type_impl.DatabricksEnumType,
         sqlalchemy.types.Uuid: dialect_type_impl.DatabricksUUID,
     }
 
