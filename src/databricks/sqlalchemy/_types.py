@@ -191,6 +191,20 @@ class TIMESTAMP(sqlalchemy.types.TypeDecorator):
             return value.replace(tzinfo=timezone.utc)
         return value
 
+    def result_processor(self, dialect, coltype):
+        """Use only process_result_value.
+
+        The impl (DateTime) is adapted through the dialect's colspecs to
+        TIMESTAMP_NTZ, whose result processing drops tzinfo. Composing it would
+        relabel the session-local wall clock as UTC, shifting every value when
+        the session time zone is not UTC.
+        """
+
+        def process(value):
+            return self.process_result_value(value, dialect)
+
+        return process
+
     def process_bind_param(
         self, value: Union[datetime, None], dialect
     ) -> Optional[datetime]:
