@@ -336,12 +336,65 @@ def parse_numeric_type_precision_and_scale(type_name_str):
     If type_name_str is "DECIMAL(18,5) returns sqlalchemy.types.Numeric(18,5)
     """
 
-    pattern = re.compile(r"DECIMAL\((\d+,\d+)\)")
+    pattern = re.compile(r"DECIMAL\(\s*(\d+)\s*,\s*(\d+)\s*\)", re.IGNORECASE)
     match = re.search(pattern, type_name_str)
-    precision_and_scale = match.group(1)
-    precision, scale = tuple(precision_and_scale.split(","))
+    if match is None:
+        return sqlalchemy.types.Numeric()
+    precision, scale = match.groups()
 
     return sqlalchemy.types.Numeric(int(precision), int(scale))
+
+
+def _split_top_level(text: str) -> List[str]:
+    """Split ``text`` on commas that are not nested inside <>, () or backticks."""
+    parts, depth, quoted, start = [], 0, False, 0
+    for index, char in enumerate(text):
+        if char == "`":
+            quoted = not quoted
+        elif quoted:
+            continue
+        elif char in "<(":
+            depth += 1
+        elif char in ">)":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(text[start:index])
+            start = index + 1
+    parts.append(text[start:])
+    return [part.strip() for part in parts]
+
+
+def parse_type_name(type_name: str) -> sqlalchemy.types.TypeEngine:
+    """Return the SQLAlchemy type for a Databricks TYPE_NAME such as
+    ``DECIMAL(10,2)``, ``ARRAY<STRING>`` or ``MAP<INT, ARRAY<BIGINT>>``.
+
+    ARRAY and MAP are parsed recursively into DatabricksArray / DatabricksMap.
+    A type that is not in GET_COLUMNS_TYPE_MAP (e.g. TIME, INTERVAL, VOID) is
+    reflected as NullType with a warning, like other SQLAlchemy dialects do,
+    instead of raising and failing reflection of the whole table.
+    """
+    type_name = type_name.strip()
+    match = re.match(r"^(\w+)\s*<(.*)>$", type_name, re.DOTALL)
+    if match:
+        outer, inner = match.group(1).lower(), match.group(2)
+        args = _split_top_level(inner)
+        if outer == "array" and len(args) == 1:
+            return type_overrides.DatabricksArray(parse_type_name(args[0]))
+        if outer == "map" and len(args) == 2:
+            return type_overrides.DatabricksMap(
+                parse_type_name(args[0]), parse_type_name(args[1])
+            )
+
+    base_match = re.match(r"^\w+", type_name)
+    raw_type = base_match.group(0).lower() if base_match else ""
+    if raw_type == "decimal":
+        return parse_numeric_type_precision_and_scale(type_name)
+    if raw_type not in GET_COLUMNS_TYPE_MAP:
+        sqlalchemy.util.warn(
+            f"Did not recognize type '{type_name}' of a Databricks column"
+        )
+        return sqlalchemy.types.NullType()
+    return GET_COLUMNS_TYPE_MAP[raw_type]()
 
 
 def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColumn:
@@ -349,20 +402,7 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
     a single of the result of a TGetColumnsRequest thrift RPC
     """
 
-    pat = re.compile(r"^\w+")
-
-    # This method assumes a valid TYPE_NAME field in the response.
-    # TODO: add error handling in case TGetColumnsResponse format changes
-
-    _raw_col_type = re.search(pat, thrift_resp_row.TYPE_NAME).group(0).lower()  # type: ignore
-    _col_type = GET_COLUMNS_TYPE_MAP[_raw_col_type]
-
-    if _raw_col_type == "decimal":
-        final_col_type = parse_numeric_type_precision_and_scale(
-            thrift_resp_row.TYPE_NAME
-        )
-    else:
-        final_col_type = _col_type
+    final_col_type = parse_type_name(thrift_resp_row.TYPE_NAME)
 
     # See comments about autoincrement in test_suite.py
     # Since Databricks SQL doesn't currently support inline AUTOINCREMENT declarations
