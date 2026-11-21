@@ -1,3 +1,4 @@
+import datetime
 import enum
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from databricks.sqlalchemy._types import (
     TIMESTAMP,
     TIMESTAMP_NTZ,
 )
+from databricks.sqlalchemy._parse import GET_COLUMNS_TYPE_MAP
 
 
 class DatabricksDataType(enum.Enum):
@@ -366,3 +368,35 @@ class TestDatabricksUUID:
         assert bind(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HYPHENATED) == self.HYPHENATED
         assert result(self.HEX) == self.HYPHENATED
+
+
+class TestPythonType:
+    """TypeDecorator does not take python_type from its impl, so each of our
+    TypeDecorators has to declare it. Without that, SQLAlchemy 2.0 raises
+    NotImplementedError and 2.1 returns ``object``.
+    """
+
+    dialect = DatabricksDialect()
+
+    @pytest.mark.parametrize(
+        "type_, expected",
+        [
+            (TIMESTAMP(), datetime.datetime),
+            (TIMESTAMP_NTZ(), datetime.datetime),
+            (TINYINT(), int),
+            # The dialect swaps these in for Time() and String() via colspecs.
+            (sqlalchemy.Time().dialect_impl(dialect), datetime.time),
+            (sqlalchemy.String().dialect_impl(dialect), str),
+        ],
+    )
+    def test_python_type(self, type_, expected):
+        assert type_.python_type is expected
+
+    @pytest.mark.parametrize(
+        "type_name",
+        sorted(name for name in GET_COLUMNS_TYPE_MAP if name != "variant"),
+    )
+    def test_reflected_types_report_python_type(self, type_name):
+        """Every type that column reflection can return, except VARIANT, maps
+        to a concrete Python type."""
+        assert GET_COLUMNS_TYPE_MAP[type_name]().python_type is not object

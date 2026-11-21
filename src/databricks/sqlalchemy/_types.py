@@ -159,6 +159,10 @@ class TIMESTAMP_NTZ(sqlalchemy.types.TypeDecorator):
             return None
         return value.replace(tzinfo=None)
 
+    @property
+    def python_type(self) -> type:
+        return datetime
+
 
 class TIMESTAMP(sqlalchemy.types.TypeDecorator):
     """Represents values comprising values of fields year, month, day, hour, minute, and second,
@@ -190,6 +194,10 @@ class TIMESTAMP(sqlalchemy.types.TypeDecorator):
         if not value.tzinfo:
             return value.replace(tzinfo=timezone.utc)
         return value
+
+    @property
+    def python_type(self) -> type:
+        return datetime
 
     def process_bind_param(
         self, value: Union[datetime, None], dialect
@@ -279,6 +287,10 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
 
         return self._parse_result_string(value)
 
+    @property
+    def python_type(self) -> type:
+        return time
+
 
 class DatabricksStringType(sqlalchemy.types.TypeDecorator):
     """We have to implement our own String() type because SQLAlchemy's default implementation
@@ -289,6 +301,10 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.String
     cache_ok = True
     pe = ParamEscaper()
+
+    @property
+    def python_type(self) -> type:
+        return str
 
     def process_literal_param(self, value, dialect) -> str:
         """SQLAlchemy's default string escaping for backslashes doesn't work for databricks. The logic here
@@ -405,6 +421,10 @@ class TINYINT(sqlalchemy.types.TypeDecorator):
 
     impl = sqlalchemy.types.SmallInteger
     cache_ok = True
+
+    @property
+    def python_type(self) -> type:
+        return int
 
 
 @compiles(TINYINT, "databricks")
